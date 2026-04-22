@@ -2609,7 +2609,7 @@ function showToast(msg) {
 // INIT
 // =============================================
 // Show landing ONLY if initAuth hasn't already handled navigation
-if (!_initAuthHandledNavigation) {
+if (!_authNavigationDone) {
   showPage('landing');
 }
 loadLandingStats();
