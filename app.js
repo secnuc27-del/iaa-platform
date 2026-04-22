@@ -325,7 +325,22 @@ async function tryManualSessionFromUrl() {
           if (!state.user) {
             console.log('SDK não processou tokens automaticamente, tentando fallback manual...');
             const manualSuccess = await tryManualSessionFromUrl();
-            if (!manualSuccess) {
+            if (manualSuccess) {
+              // Force navigation if onAuthStateChange didn't fire
+              const { data: { session } } = await db.auth.getSession();
+              if (session && session.user) {
+                state.user = session.user;
+                await loadProfile(session.user.id);
+                updateAvatarUI();
+                if (!state.profile || !state.profile.profile_type) {
+                  showPage('profile-selection');
+                } else {
+                  showPage('dashboard');
+                  showDash('feed');
+                }
+                hideAppLoading();
+              }
+            } else {
               // Final timeout - give up after more time
               setTimeout(() => {
                 if (!state.user) {
