@@ -133,6 +133,34 @@ const state = {
 if (state.theme === 'dark') document.documentElement.classList.add('dark');
 
 // =============================================
+// MODAL HELPERS (Sobre, Privacidade, Termos)
+// =============================================
+function openModal(id) {
+  const modal = document.getElementById(id);
+  if (modal) {
+    modal.style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+  }
+}
+
+function closeModal(id) {
+  const modal = document.getElementById(id);
+  if (modal) {
+    modal.style.display = 'none';
+    document.body.style.overflow = '';
+  }
+}
+
+// Close modals with ESC key
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    document.querySelectorAll('.info-modal').forEach(m => {
+      if (m.style.display !== 'none') closeModal(m.id);
+    });
+  }
+});
+
+// =============================================
 // SUPABASE AUTH LISTENERS + LOCAL FALLBACK
 // =============================================
 
