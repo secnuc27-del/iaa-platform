@@ -23,7 +23,7 @@
      ============================================= -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
-  <link rel="stylesheet" href="style.css?v=3" />
+  <link rel="stylesheet" href="style.css?v=4" />
 </head>
 
 <body>
@@ -165,22 +165,24 @@
     </div>
     <footer class="site-footer">
       <div class="footer-inner">
-        <div class="footer-brand">
-          <div class="nav-logo">
-            <div class="logo-icon gradient-brand" style="width:32px;height:32px;font-size:11px">IAA</div>
-            <div>
-              <span class="logo-text" style="font-size:15px">Interligação Alto Acre</span>
+        <div class="footer-main">
+          <div class="footer-brand">
+            <div class="logo-icon gradient-brand">IAA</div>
+            <div class="footer-brand-text">
+              <span class="brand-name">Interligação Alto Acre</span>
               <span class="footer-dev">por <strong>Kaelvora</strong></span>
             </div>
           </div>
+          <div class="footer-links">
+            <a href="javascript:void(0)" onclick="openInfoModal('modal-sobre')">Sobre</a>
+            <a href="javascript:void(0)" onclick="openInfoModal('modal-privacidade')">Privacidade</a>
+            <a href="javascript:void(0)" onclick="openInfoModal('modal-termos')">Termos</a>
+            <a href="mailto:suporte@iaa.com.br">Contato</a>
+          </div>
         </div>
-        <div class="footer-links">
-          <a href="javascript:void(0)" onclick="openInfoModal('modal-sobre')">Sobre</a>
-          <a href="javascript:void(0)" onclick="openInfoModal('modal-privacidade')">Privacidade</a>
-          <a href="javascript:void(0)" onclick="openInfoModal('modal-termos')">Termos</a>
-          <a href="mailto:suporte@iaa.com.br">Contato</a>
+        <div class="footer-bottom">
+          <div class="footer-copy">© 2025 IAA – Interligação Alto Acre · Desenvolvido por <strong>Kaelvora</strong> · Brasiléia & Epitaciolândia, Acre</div>
         </div>
-        <div class="footer-copy">© 2025 IAA – Interligação Alto Acre. Desenvolvido por <strong>Kaelvora</strong>. Brasiléia & Epitaciolândia, Acre.</div>
       </div>
     </footer>
   </div>
@@ -622,7 +624,7 @@
   <!-- Hidden file input for photo upload -->
   <input type="file" id="avatar-input" accept="image/*" style="display:none" onchange="handleAvatarUpload(this)" />
 
-  <script src="app.js?v=5"></script>
+  <script src="app.js?v=6"></script>
 </body>
 
 </html>
