@@ -465,23 +465,41 @@ async function loadProfile(userId) {
     return;
   }
   if (!db) return;
+
+  // Carregar do cache local primeiro para resposta rápida (offline fallback)
+  const localProf = localDB.getProfile(userId);
+  if (localProf) {
+    state.profile = localProf;
+    state.dbReady = true;
+  }
+
   try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 6000); // 6 segundos limite
+
     const { data, error } = await db
       .from('profiles')
       .select('*')
       .eq('id', userId)
+      .abortSignal(controller.signal)
       .single();
+      
+    clearTimeout(timeoutId);
     console.log('loadProfile result:', { data, error });
+    
     if (data) {
       state.profile = data;
       state.dbReady = true;
-    } else {
+      localDB.saveProfile(data); // Atualiza cache
+    } else if (!localProf) {
       state.profile = null;
       state.dbReady = true;
     }
   } catch (err) {
     console.error('loadProfile error:', err);
-    state.profile = null;
+    if (!state.profile) {
+      state.profile = null;
+    }
     state.dbReady = true;
   }
 }
@@ -510,6 +528,11 @@ function hideAppLoading() {
     if (textEl) textEl.textContent = 'Carregando IAA...';
   }, 500);
 }
+
+// Fail-safe: Forçar ocultação da tela de carregamento após 8 segundos
+window.addEventListener('load', () => {
+  setTimeout(hideAppLoading, 8000);
+});
 
 // =============================================
 // PAGE NAVIGATION
