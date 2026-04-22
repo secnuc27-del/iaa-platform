@@ -407,31 +407,14 @@ async function jwtFallbackLogin() {
 
   useLocalMode = false;
 
-  // Auth state change listener — handles SDK auto-detection of tokens
+  // Auth state change listener
   db.auth.onAuthStateChange(async (event, session) => {
     console.log('onAuthStateChange:', event, !!session);
-
     if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
       if (session && session.user) {
         await loadProfile(session.user.id);
         await handleAuthSuccess(session.user);
       }
-    } else if (event === 'INITIAL_SESSION') {
-      if (session && session.user) {
-        await loadProfile(session.user.id);
-        await handleAuthSuccess(session.user);
-      } else if (!isCallback && !_authNavigationDone) {
-        // No session on normal load — check reachability
-        const isReachable = await testSupabaseConnection();
-        if (!isReachable) {
-          fallbackToLocalAuth();
-        } else {
-          _authNavigationDone = true;
-          showPage('landing');
-          hideAppLoading();
-        }
-      }
-      // If isCallback and no session, the timeout above will handle it
     } else if (event === 'SIGNED_OUT') {
       state.user = null;
       state.profile = null;
@@ -442,9 +425,36 @@ async function jwtFallbackLogin() {
     }
   });
     
-  // The onAuthStateChange INITIAL_SESSION event handles everything now.
-  // For callbacks, the 6-second timeout handles JWT fallback.
-  // No need for explicit getSession here.
+  // Explicitly check session on startup
+  try {
+    const { data, error } = await db.auth.getSession();
+    const session = data?.session;
+    
+    if (session && session.user) {
+      await loadProfile(session.user.id);
+      await handleAuthSuccess(session.user);
+    } else if (!isCallback && !_authNavigationDone) {
+      // No session on normal load
+      const isReachable = await testSupabaseConnection();
+      if (!isReachable) {
+        fallbackToLocalAuth();
+      } else {
+        // If local user exists and we are reachable, they might have logged in locally before.
+        // Let's use local auth if a local user exists.
+        const savedUser = localDB.getCurrentUser();
+        if (savedUser) {
+          fallbackToLocalAuth();
+        } else {
+          _authNavigationDone = true;
+          showPage('landing');
+          hideAppLoading();
+        }
+      }
+    }
+  } catch (err) {
+    console.error('Erro ao verificar sessão:', err);
+    fallbackToLocalAuth();
+  }
 })();
 
 async function loadProfile(userId) {
