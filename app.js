@@ -345,16 +345,21 @@ async function handleAuthSuccess(user) {
       
       const tokens = extractTokensFromHash();
       if (tokens) {
-        // Try setSession first
-        let sessionSet = false;
+        // Helper: decode base64url (JWT uses URL-safe base64)
+        function b64urlDecode(str) {
+          let b64 = str.replace(/-/g, '+').replace(/_/g, '/');
+          while (b64.length % 4) b64 += '=';
+          return atob(b64);
+        }
+        
+        // Strategy 1: Try setSession
         try {
           const { data, error } = await db.auth.setSession({
             access_token: tokens.access_token,
             refresh_token: tokens.refresh_token
           });
           if (!error && data?.session) {
-            console.log('setSession com tokens da URL funcionou!');
-            sessionSet = true;
+            console.log('✅ setSession funcionou!');
             history.replaceState(null, '', window.location.pathname);
             await loadProfile(data.session.user.id);
             await handleAuthSuccess(data.session.user);
@@ -365,89 +370,71 @@ async function handleAuthSuccess(user) {
           console.warn('setSession error:', e.message);
         }
         
-        // If setSession failed (clock skew), try refreshSession with refresh_token
-        if (!sessionSet && tokens.refresh_token) {
+        // Strategy 2: Try refreshSession
+        if (tokens.refresh_token) {
           try {
-            console.log('Tentando refreshSession como fallback para clock skew...');
-            const { data: refreshData, error: refreshError } = await db.auth.refreshSession({
+            const { data: rd, error: re } = await db.auth.refreshSession({
               refresh_token: tokens.refresh_token
             });
-            if (!refreshError && refreshData?.session) {
-              console.log('refreshSession funcionou!');
+            if (!re && rd?.session) {
+              console.log('✅ refreshSession funcionou!');
               history.replaceState(null, '', window.location.pathname);
-              await loadProfile(refreshData.session.user.id);
-              await handleAuthSuccess(refreshData.session.user);
+              await loadProfile(rd.session.user.id);
+              await handleAuthSuccess(rd.session.user);
               return;
             }
-            console.warn('refreshSession falhou:', refreshError?.message);
+            console.warn('refreshSession falhou:', re?.message);
           } catch (e) {
             console.warn('refreshSession error:', e.message);
           }
         }
         
-        // Both failed — try one more approach: decode JWT and create user manually for navigation
-        // Then use refresh_token to get a valid session in background
-        if (!sessionSet && tokens.access_token) {
-          try {
-            // Decode JWT payload without validation
-            const payload = JSON.parse(atob(tokens.access_token.split('.')[1]));
-            console.log('JWT payload decodificado:', payload);
+        // Strategy 3 (FALLBACK): Decode JWT manually and navigate user
+        try {
+          const parts = tokens.access_token.split('.');
+          const payload = JSON.parse(b64urlDecode(parts[1]));
+          console.log('JWT decodificado (fallback):', payload.sub, payload.email);
+          
+          if (payload.sub) {
+            const userEmail = payload.email || payload.sub + '@google.com';
+            const userName = payload.user_metadata?.full_name || payload.user_metadata?.name || userEmail.split('@')[0];
             
-            if (payload.sub && payload.email) {
-              // We have valid user info even though the token timing is off
-              // Store tokens in Supabase's storage format for later refresh
-              const storageKey = 'iaa-supabase-auth';
-              const sessionData = {
-                access_token: tokens.access_token,
-                refresh_token: tokens.refresh_token,
-                token_type: 'bearer',
-                expires_in: payload.exp ? (payload.exp - Math.floor(Date.now() / 1000)) : 3600,
-                expires_at: payload.exp || (Math.floor(Date.now() / 1000) + 3600),
-                user: {
-                  id: payload.sub,
-                  email: payload.email,
-                  user_metadata: payload.user_metadata || {},
-                  app_metadata: payload.app_metadata || {},
-                  aud: payload.aud || 'authenticated',
-                  role: payload.role || 'authenticated'
-                }
-              };
-              
-              // Force store the session
-              localStorage.setItem('sb-' + SUPABASE_URL.split('//')[1].split('.')[0] + '-auth-token', JSON.stringify(sessionData));
-              
-              history.replaceState(null, '', window.location.pathname);
-              
-              // Load profile and navigate
-              await loadProfile(payload.sub);
-              const user = sessionData.user;
-              await handleAuthSuccess(user);
-              
-              // Try to refresh in background to get a valid session
+            // Save user to local storage as fallback
+            const userData = {
+              id: payload.sub,
+              email: userEmail,
+              user_metadata: { full_name: userName, ...(payload.user_metadata || {}) }
+            };
+            
+            localDB.setCurrentUser(userData);
+            history.replaceState(null, '', window.location.pathname);
+            
+            await loadProfile(payload.sub);
+            await handleAuthSuccess(userData);
+            
+            // Try background refresh
+            if (tokens.refresh_token) {
               setTimeout(async () => {
                 try {
-                  if (tokens.refresh_token) {
-                    await db.auth.refreshSession({ refresh_token: tokens.refresh_token });
-                    console.log('Background refresh succeeded!');
-                  }
-                } catch (e) { console.warn('Background refresh failed:', e); }
-              }, 2000);
-              
-              return;
+                  await db.auth.refreshSession({ refresh_token: tokens.refresh_token });
+                  console.log('Background refresh OK');
+                } catch (e) { /* silent */ }
+              }, 3000);
             }
-          } catch (e) {
-            console.warn('JWT decode fallback failed:', e);
+            return;
           }
+        } catch (e) {
+          console.error('JWT decode falhou:', e);
         }
       }
       
       // Everything failed
-      console.warn('OAuth callback: todos os métodos falharam');
+      console.warn('OAuth: todos os métodos falharam');
       history.replaceState(null, '', window.location.pathname);
       _authNavigationDone = true;
       showPage('login');
       hideAppLoading();
-      showToast('Erro no login com Google. Por favor, tente novamente.');
+      showToast('Erro no login com Google. Tente novamente.');
       return;
     }
     
