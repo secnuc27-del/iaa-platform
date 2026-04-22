@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://secnuc27-del.github.io/iaa-platform/sitemap.xml

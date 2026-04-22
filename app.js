@@ -22,10 +22,11 @@ try {
   if (supabaseConfigured) {
     db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
       auth: {
-        flowType: 'implicit',          // Use implicit flow (tokens in URL hash) - works on static sites
-        autoRefreshToken: true,         // Auto refresh expired tokens
-        persistSession: true,           // Save session to localStorage
-        detectSessionInUrl: true        // Detect OAuth callback tokens in URL
+        flowType: 'implicit',
+        autoRefreshToken: true,
+        persistSession: true,
+        detectSessionInUrl: true,
+        storageKey: 'iaa-supabase-auth'
       }
     });
   }
@@ -158,16 +159,26 @@ async function testSupabaseConnection() {
 function isOAuthCallback() {
   const hash = window.location.hash;
   const search = window.location.search;
-  // Supabase OAuth returns tokens in hash fragment or as query params
   return hash.includes('access_token') || 
          hash.includes('refresh_token') || 
          search.includes('code=') ||
          hash.includes('error_description');
 }
 
+// Check if the hash contains an OAuth error
+function getOAuthError() {
+  const hash = window.location.hash.substring(1);
+  if (!hash) return null;
+  const params = new URLSearchParams(hash);
+  const errDesc = params.get('error_description');
+  const err = params.get('error');
+  if (errDesc || err) return errDesc || err;
+  return null;
+}
+
 // Extract tokens from URL hash (fallback for clock skew issues)
 function extractTokensFromHash() {
-  const hash = window.location.hash.substring(1); // Remove the #
+  const hash = window.location.hash.substring(1);
   if (!hash) return null;
   
   const params = new URLSearchParams(hash);
@@ -181,12 +192,12 @@ function extractTokensFromHash() {
 
 // Manually set session from URL tokens (workaround for clock skew)
 async function tryManualSessionFromUrl() {
-  if (!db || !isOAuthCallback()) return false;
+  if (!db) return false;
   
   const tokens = extractTokensFromHash();
   if (!tokens) return false;
   
-  console.log('Tentando setSession manual (fallback clock skew)...');
+  console.log('Tentando setSession manual com tokens da URL...');
   
   try {
     const { data, error } = await db.auth.setSession({
@@ -194,28 +205,28 @@ async function tryManualSessionFromUrl() {
       refresh_token: tokens.refresh_token
     });
     
-    if (error) {
-      console.error('setSession manual falhou:', error.message);
-      // If setSession also fails (e.g. token truly expired), try refreshing
-      if (tokens.refresh_token) {
-        console.log('Tentando refresh token...');
-        const { data: refreshData, error: refreshError } = await db.auth.refreshSession({
-          refresh_token: tokens.refresh_token
-        });
-        if (!refreshError && refreshData?.session) {
-          console.log('Refresh token funcionou!');
-          return true;
-        }
-      }
-      return false;
-    }
-    
-    if (data?.session) {
+    if (!error && data?.session) {
       console.log('setSession manual funcionou!');
-      // Clean URL
       history.replaceState(null, '', window.location.pathname);
       return true;
     }
+    
+    console.warn('setSession falhou:', error?.message);
+    
+    // Try refresh if setSession fails (clock skew)
+    if (tokens.refresh_token) {
+      console.log('Tentando refreshSession...');
+      const { data: refreshData, error: refreshError } = await db.auth.refreshSession({
+        refresh_token: tokens.refresh_token
+      });
+      if (!refreshError && refreshData?.session) {
+        console.log('refreshSession funcionou!');
+        history.replaceState(null, '', window.location.pathname);
+        return true;
+      }
+      console.warn('refreshSession falhou:', refreshError?.message);
+    }
+    
     return false;
   } catch (err) {
     console.error('Erro no setSession manual:', err);
@@ -223,17 +234,59 @@ async function tryManualSessionFromUrl() {
   }
 }
 
+// Flag to track if navigation was already handled
+let _authNavigationDone = false;
+
+// Navigate user after successful auth
+async function handleAuthSuccess(user) {
+  if (_authNavigationDone && state.user) return; // Already handled
+  _authNavigationDone = true;
+  state.user = user;
+  
+  // Also save to local for offline fallback
+  localDB.setCurrentUser({ id: user.id, email: user.email, user_metadata: user.user_metadata });
+  
+  updateAvatarUI();
+  
+  if (!state.profile || !state.profile.profile_type) {
+    showPage('profile-selection');
+  } else {
+    showPage('dashboard');
+    showDash('feed');
+    showToast('Bem-vindo de volta! 👋');
+  }
+  
+  // Clean URL hash if present
+  if (window.location.hash.includes('access_token')) {
+    history.replaceState(null, '', window.location.pathname);
+  }
+  
+  hideAppLoading();
+}
+
 // Initialize authentication
 (async function initAuth() {
   const isCallback = isOAuthCallback();
   console.log('initAuth: isOAuthCallback =', isCallback);
 
+  // Check for OAuth errors first
   if (isCallback) {
+    const oauthError = getOAuthError();
+    if (oauthError) {
+      console.error('OAuth retornou erro:', oauthError);
+      history.replaceState(null, '', window.location.pathname);
+      _authNavigationDone = true;
+      showPage('login');
+      hideAppLoading();
+      showToast('Erro no login: ' + decodeURIComponent(oauthError));
+      return;
+    }
     showAppLoading('Finalizando login com Google...');
   }
 
   function fallbackToLocalAuth() {
     useLocalMode = true;
+    _authNavigationDone = true;
     console.log('Usando modo local (localStorage)');
     const savedUser = localDB.getCurrentUser();
     if (savedUser) {
@@ -251,118 +304,120 @@ async function tryManualSessionFromUrl() {
         showPage('profile-selection');
       }
     } else {
-      // No saved user, show landing
       showPage('landing');
     }
     hideAppLoading();
   }
 
-  if (db) {
-    // Register the listener IMMEDIATELY so we don't miss the OAuth redirect event
-    useLocalMode = false;
-    let authHandled = false;
+  if (!db) {
+    fallbackToLocalAuth();
+    return;
+  }
 
-    db.auth.onAuthStateChange(async (event, session) => {
-      console.log('onAuthStateChange', event, session);
-      authHandled = true;
+  // Set useLocalMode = false since db exists
+  useLocalMode = false;
 
+  // Register auth state change listener FIRST
+  db.auth.onAuthStateChange(async (event, session) => {
+    console.log('onAuthStateChange:', event, !!session);
+
+    if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION') {
       if (session && session.user) {
-        state.user = session.user;
         await loadProfile(session.user.id);
-        updateAvatarUI();
-        const currentPage = document.querySelector('.page.active')?.id;
-        if (!currentPage || ['login', 'signup', 'landing'].includes(currentPage)) {
-          if (!state.profile || !state.profile.profile_type) {
-            showPage('profile-selection');
-          } else {
-            showPage('dashboard');
-            showDash('feed');
-          }
-        }
-        // Clean up URL hash/params after successful OAuth
-        if (isCallback) {
-          history.replaceState(null, '', window.location.pathname);
-        }
-        hideAppLoading();
-      } else {
-        state.user = null;
-        state.profile = null;
-        // Only show landing if this is NOT an OAuth callback (still processing)
-        if (!isCallback) {
-          const currentPage = document.querySelector('.page.active')?.id;
-          if (!currentPage) {
-            showPage('landing');
-          }
-          hideAppLoading();
-        }
+        await handleAuthSuccess(session.user);
       }
-    });
-
-    // Check session explicitly
-    try {
-      const { data: { session } } = await db.auth.getSession();
-      console.log('getSession result:', !!session);
-      
-      if (session && session.user) {
-        // Session exists - onAuthStateChange will handle navigation
-        // Just make sure loading stays visible until it fires
-      } else if (!isCallback) {
-        // No session and NOT an OAuth callback - check connection and show landing
-        const isReachable = await testSupabaseConnection();
-        if (!isReachable) {
-          fallbackToLocalAuth();
-        } else {
-          // Supabase is reachable but no session
-          showPage('landing');
-          hideAppLoading();
-        }
-      }
-      // If isCallback but no session yet, try manual token extraction
-      // then set a timeout as final fallback
-      if (isCallback) {
-        // Try manual extraction after a short delay (give SDK a chance first)
-        setTimeout(async () => {
-          if (!state.user) {
-            console.log('SDK não processou tokens automaticamente, tentando fallback manual...');
-            const manualSuccess = await tryManualSessionFromUrl();
-            if (manualSuccess) {
-              // Force navigation if onAuthStateChange didn't fire
-              const { data: { session } } = await db.auth.getSession();
-              if (session && session.user) {
-                state.user = session.user;
-                await loadProfile(session.user.id);
-                updateAvatarUI();
-                if (!state.profile || !state.profile.profile_type) {
-                  showPage('profile-selection');
-                } else {
-                  showPage('dashboard');
-                  showDash('feed');
-                }
-                hideAppLoading();
-              }
-            } else {
-              // Final timeout - give up after more time
-              setTimeout(() => {
-                if (!state.user) {
-                  console.warn('OAuth callback timeout final - mostrando landing');
-                  showPage('landing');
-                  hideAppLoading();
-                  showToast('Erro no login com Google. Tente novamente.');
-                }
-              }, 5000);
-            }
-          }
-        }, 3000); // Wait 3 seconds before trying manual fallback
-      }
-    } catch (err) {
-      console.error('getSession error:', err);
-      if (!isCallback) {
-        fallbackToLocalAuth();
+    } else if (event === 'SIGNED_OUT') {
+      state.user = null;
+      state.profile = null;
+      localDB.setCurrentUser(null);
+      if (_authNavigationDone) {
+        // Only navigate if we were previously logged in
+        showPage('landing');
       }
     }
-  } else {
-    // Supabase not configured
-    fallbackToLocalAuth();
+  });
+
+  // Now process the session
+  try {
+    // If this is an OAuth callback, Supabase SDK should detect tokens automatically
+    const { data: { session }, error: sessionError } = await db.auth.getSession();
+    console.log('getSession result: session=', !!session, 'error=', sessionError?.message);
+
+    if (session && session.user) {
+      // Session found — success
+      await loadProfile(session.user.id);
+      await handleAuthSuccess(session.user);
+      return;
+    }
+
+    // If OAuth callback but getSession found nothing — try manual extraction
+    if (isCallback && !state.user) {
+      console.log('OAuth callback sem sessão automática, tentando extração manual...');
+      
+      const manualOk = await tryManualSessionFromUrl();
+      if (manualOk) {
+        // Re-check session after manual set
+        const { data: { session: s2 } } = await db.auth.getSession();
+        if (s2 && s2.user) {
+          await loadProfile(s2.user.id);
+          await handleAuthSuccess(s2.user);
+          return;
+        }
+      }
+      
+      // Wait briefly for onAuthStateChange to fire
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      
+      if (!state.user) {
+        // Final fallback — clean URL and show error
+        console.warn('OAuth callback: todos os métodos falharam');
+        history.replaceState(null, '', window.location.pathname);
+        _authNavigationDone = true;
+        showPage('login');
+        hideAppLoading();
+        showToast('Erro no login com Google. Por favor, tente novamente.');
+      }
+      return;
+    }
+
+    // Normal page load (not callback) — no session
+    if (!_authNavigationDone) {
+      // Check if Supabase is reachable
+      const isReachable = await testSupabaseConnection();
+      if (!isReachable) {
+        fallbackToLocalAuth();
+      } else {
+        _authNavigationDone = true;
+        showPage('landing');
+        hideAppLoading();
+      }
+    }
+
+  } catch (err) {
+    console.error('initAuth getSession error:', err);
+    
+    if (isCallback) {
+      // Try manual extraction as last resort
+      try {
+        const manualOk = await tryManualSessionFromUrl();
+        if (manualOk) {
+          const { data: { session: s3 } } = await db.auth.getSession();
+          if (s3 && s3.user) {
+            await loadProfile(s3.user.id);
+            await handleAuthSuccess(s3.user);
+            return;
+          }
+        }
+      } catch (e2) { console.error('Manual extraction error:', e2); }
+      
+      history.replaceState(null, '', window.location.pathname);
+      _authNavigationDone = true;
+      showPage('login');
+      hideAppLoading();
+      showToast('Erro no login com Google. Tente novamente.');
+    } else {
+      fallbackToLocalAuth();
+    }
   }
 })();
 
@@ -457,12 +512,14 @@ function goDash(section) {
 // =============================================
 async function doLogin() {
   console.log('doLogin chamado, useLocalMode:', useLocalMode);
-  const email = document.getElementById('login-email').value.trim();
-  const pwd = document.getElementById('login-pwd').value;
+  const emailEl = document.getElementById('login-email');
+  const pwdEl = document.getElementById('login-pwd');
+  const email = emailEl ? emailEl.value.trim() : '';
+  const pwd = pwdEl ? pwdEl.value : '';
   if (!email || !pwd) { showAuthError('login-error', 'Preencha todos os campos'); return; }
 
   const btn = document.getElementById('login-btn');
-  btn.textContent = 'Entrando...'; btn.disabled = true;
+  if (btn) { btn.textContent = 'Entrando...'; btn.disabled = true; }
   showAppLoading('Autenticando...');
   showAuthError('login-error', '');
 
@@ -472,7 +529,7 @@ async function doLogin() {
       const users = localDB.getUsers();
       const user = users.find(u => u.email === email && u.password === pwd);
 
-      btn.textContent = 'Entrar'; btn.disabled = false;
+      if (btn) { btn.textContent = 'Entrar'; btn.disabled = false; }
 
       if (!user) {
         hideAppLoading();
@@ -505,18 +562,28 @@ async function doLogin() {
   }
 
   // Supabase login
+  if (!db) {
+    hideAppLoading();
+    if (btn) { btn.textContent = 'Entrar'; btn.disabled = false; }
+    useLocalMode = true;
+    doLogin();
+    return;
+  }
+
   try {
     const { data, error } = await db.auth.signInWithPassword({ email, password: pwd });
     console.log('doLogin result:', { data, error });
-    btn.textContent = 'Entrar'; btn.disabled = false;
+    if (btn) { btn.textContent = 'Entrar'; btn.disabled = false; }
 
     if (error) {
       hideAppLoading();
       console.error('Login error:', error.message, error);
       const msgs = {
         'Invalid login credentials': 'E-mail ou senha incorretos.',
-        'Email not confirmed': 'Confirme seu e-mail antes de entrar.',
+        'Email not confirmed': 'Confirme seu e-mail antes de entrar. Verifique sua caixa de entrada.',
         'Invalid API key': 'Erro de configuração do servidor.',
+        'Email rate limit exceeded': 'Muitas tentativas. Aguarde alguns minutos.',
+        'Request rate limit reached': 'Muitas tentativas. Aguarde alguns minutos.',
       };
       showAuthError('login-error', msgs[error.message] || ('Erro: ' + error.message));
       return;
@@ -524,14 +591,18 @@ async function doLogin() {
 
     if (data && data.session) {
       console.log('Login bem-sucedido');
+      // Navigate immediately after successful login
+      await loadProfile(data.user.id);
+      await handleAuthSuccess(data.user);
     }
   } catch (err) {
     hideAppLoading();
-    btn.textContent = 'Entrar'; btn.disabled = false;
+    if (btn) { btn.textContent = 'Entrar'; btn.disabled = false; }
     console.error('Login catch:', err);
 
     // If Supabase failed, try local mode
     useLocalMode = true;
+    showAuthError('login-error', 'Servidor indisponível. Usando modo offline.');
     doLogin();
   }
 }
@@ -672,23 +743,36 @@ async function doGoogleLogin() {
   showAppLoading('Conectando ao Google...');
 
   try {
-    // Use clean base URL for redirect (without hash/query params)
-    const baseUrl = window.location.origin + window.location.pathname;
+    // Build clean redirect URL
+    let baseUrl = window.location.origin + window.location.pathname;
+    // Ensure it ends with / for GitHub Pages
+    if (!baseUrl.endsWith('/')) baseUrl += '/';
+    // Remove any index.html from the path
+    baseUrl = baseUrl.replace(/index\.html\/?$/, '');
+    if (!baseUrl.endsWith('/')) baseUrl += '/';
+    
     console.log('OAuth redirectTo:', baseUrl);
     
-    const { error } = await db.auth.signInWithOAuth({
+    // Reset navigation flag so callback handler works
+    _authNavigationDone = false;
+    
+    const { data, error } = await db.auth.signInWithOAuth({
       provider: 'google',
       options: {
         redirectTo: baseUrl,
         queryParams: { prompt: 'select_account' }
       }
     });
+    console.log('signInWithOAuth result:', { data, error });
     if (error) {
       hideAppLoading();
-      showToast('Erro ao entrar com Google.');
+      console.error('Google OAuth error:', error);
+      showToast('Erro ao entrar com Google: ' + error.message);
     }
+    // If successful, browser will redirect to Google
   } catch (err) {
     hideAppLoading();
+    console.error('Google OAuth catch:', err);
     showToast('Erro inesperado na autenticação com Google.');
   }
 }
@@ -2465,8 +2549,10 @@ function showToast(msg) {
 // =============================================
 // INIT
 // =============================================
-// Show landing while checking auth
-showPage('landing');
+// Show landing ONLY if initAuth hasn't already handled navigation
+if (!_initAuthHandledNavigation) {
+  showPage('landing');
+}
 loadLandingStats();
 
 // Theme icon
@@ -2475,14 +2561,28 @@ document.addEventListener('DOMContentLoaded', () => {
   if (btn && state.theme === 'dark') btn.textContent = '☀️';
 });
 
-// Fallback: hide loader if Supabase not configured
+// Fallback: hide loader — but NOT if OAuth callback is being processed
 setTimeout(() => {
+  if (isOAuthCallback()) return; // Don't hide loader during OAuth processing
   const loader = document.getElementById('app-loading');
   if (loader && !loader.classList.contains('hidden')) {
     loader.classList.add('hidden');
     setTimeout(() => loader.style.display = 'none', 500);
   }
 }, 3000);
+
+// Secondary fallback: if OAuth is stuck for too long (15s), force hide loader
+setTimeout(() => {
+  const loader = document.getElementById('app-loading');
+  if (loader && !loader.classList.contains('hidden')) {
+    console.warn('Force hiding loader after 15s timeout');
+    loader.classList.add('hidden');
+    setTimeout(() => loader.style.display = 'none', 500);
+    if (!state.user) {
+      showPage('landing');
+    }
+  }
+}, 15000);
 
 // =============================================
 // ANIMATIONS ENGINE
