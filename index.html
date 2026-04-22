@@ -23,7 +23,7 @@
      ============================================= -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
-  <link rel="stylesheet" href="style.css?v=5" />
+  <link rel="stylesheet" href="style.css?v=6" />
 </head>
 
 <body>
@@ -164,24 +164,18 @@
       </div>
     </div>
     <footer class="site-footer">
-      <div class="footer-inner">
-        <div class="footer-main">
-          <div class="footer-brand">
-            <div class="logo-icon gradient-brand">IAA</div>
-            <div class="footer-brand-text">
-              <span class="brand-name">Interligação Alto Acre</span>
-              <span class="footer-dev">por <strong>Kaelvora</strong></span>
-            </div>
-          </div>
-          <div class="footer-links">
-            <a href="javascript:void(0)" onclick="openInfoModal('modal-sobre')">Sobre</a>
-            <a href="javascript:void(0)" onclick="openInfoModal('modal-privacidade')">Privacidade</a>
-            <a href="javascript:void(0)" onclick="openInfoModal('modal-termos')">Termos</a>
-            <a href="mailto:suporte@iaa.com.br">Contato</a>
-          </div>
+      <div class="footer-row">
+        <div class="footer-brand">
+          <div class="logo-icon gradient-brand">IAA</div>
+          <span class="brand-name">Interligação Alto Acre</span>
+          <span class="footer-sep">|</span>
+          <span class="footer-dev">por <strong>Kaelvora</strong></span>
         </div>
-        <div class="footer-bottom">
-          <div class="footer-copy">© 2025 IAA – Interligação Alto Acre · Desenvolvido por <strong>Kaelvora</strong> · Brasiléia & Epitaciolândia, Acre</div>
+        <div class="footer-links">
+          <a href="javascript:void(0)" onclick="openInfoModal('modal-sobre')">Sobre</a>
+          <a href="javascript:void(0)" onclick="openInfoModal('modal-privacidade')">Privacidade</a>
+          <a href="javascript:void(0)" onclick="openInfoModal('modal-termos')">Termos</a>
+          <a href="mailto:suporte@iaa.com.br">Contato</a>
         </div>
       </div>
     </footer>
@@ -624,7 +618,7 @@
   <!-- Hidden file input for photo upload -->
   <input type="file" id="avatar-input" accept="image/*" style="display:none" onchange="handleAvatarUpload(this)" />
 
-  <script src="app.js?v=6"></script>
+  <script src="app.js?v=7"></script>
 </body>
 
 </html>
