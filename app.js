@@ -4,7 +4,7 @@
 // IMPORTANTE: Substitua pelos seus valores reais do projeto Supabase
 // A URL e a chave abaixo devem ser do seu projeto em https://supabase.com/dashboard
 const SUPABASE_URL = 'https://ykmyoaaojauetfgrmauq.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlrbXlvYWFvamF1ZXRmZ3JtYXVxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDQzMjQ1NzcsImV4cCI6MjA1OTkwMDU3N30.RmG1EC9fKMpUFYBPJMeuQgjFP5jiQqfjBGvbh-GHFNI';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlrbXlvYWFvamF1ZXRmZ3JtYXVxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU4NTE5OTgsImV4cCI6MjA5MTQyNzk5OH0.1hGCoaow-CTC-U2p4Z8qSZuzKSwE5CEKZROwc3AmCv0';
 
 const { createClient } = supabase;
 
