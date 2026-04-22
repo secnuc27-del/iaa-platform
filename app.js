@@ -2628,15 +2628,14 @@ setTimeout(() => {
     });
     // CTA box
     document.querySelectorAll('.cta-box').forEach(el => el.classList.add('reveal'));
-    // Footer
-    document.querySelectorAll('footer').forEach(el => el.classList.add('reveal'));
+    // Footer — NO reveal animation, always visible
   }
 
   // 2. Intersection Observer for scroll reveals
   function setupScrollReveal() {
     const observerOptions = {
-      threshold: 0.12,
-      rootMargin: '0px 0px -40px 0px'
+      threshold: 0.05,
+      rootMargin: '0px 0px 0px 0px'
     };
     const observer = new IntersectionObserver((entries) => {
       entries.forEach(entry => {
