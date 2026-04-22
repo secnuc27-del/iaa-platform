@@ -165,6 +165,64 @@ function isOAuthCallback() {
          hash.includes('error_description');
 }
 
+// Extract tokens from URL hash (fallback for clock skew issues)
+function extractTokensFromHash() {
+  const hash = window.location.hash.substring(1); // Remove the #
+  if (!hash) return null;
+  
+  const params = new URLSearchParams(hash);
+  const access_token = params.get('access_token');
+  const refresh_token = params.get('refresh_token');
+  
+  if (!access_token) return null;
+  
+  return { access_token, refresh_token };
+}
+
+// Manually set session from URL tokens (workaround for clock skew)
+async function tryManualSessionFromUrl() {
+  if (!db || !isOAuthCallback()) return false;
+  
+  const tokens = extractTokensFromHash();
+  if (!tokens) return false;
+  
+  console.log('Tentando setSession manual (fallback clock skew)...');
+  
+  try {
+    const { data, error } = await db.auth.setSession({
+      access_token: tokens.access_token,
+      refresh_token: tokens.refresh_token
+    });
+    
+    if (error) {
+      console.error('setSession manual falhou:', error.message);
+      // If setSession also fails (e.g. token truly expired), try refreshing
+      if (tokens.refresh_token) {
+        console.log('Tentando refresh token...');
+        const { data: refreshData, error: refreshError } = await db.auth.refreshSession({
+          refresh_token: tokens.refresh_token
+        });
+        if (!refreshError && refreshData?.session) {
+          console.log('Refresh token funcionou!');
+          return true;
+        }
+      }
+      return false;
+    }
+    
+    if (data?.session) {
+      console.log('setSession manual funcionou!');
+      // Clean URL
+      history.replaceState(null, '', window.location.pathname);
+      return true;
+    }
+    return false;
+  } catch (err) {
+    console.error('Erro no setSession manual:', err);
+    return false;
+  }
+}
+
 // Initialize authentication
 (async function initAuth() {
   const isCallback = isOAuthCallback();
@@ -259,17 +317,27 @@ function isOAuthCallback() {
           hideAppLoading();
         }
       }
-      // If isCallback but no session yet, wait for onAuthStateChange
-      // Set a timeout to avoid infinite loading
+      // If isCallback but no session yet, try manual token extraction
+      // then set a timeout as final fallback
       if (isCallback) {
-        setTimeout(() => {
+        // Try manual extraction after a short delay (give SDK a chance first)
+        setTimeout(async () => {
           if (!state.user) {
-            console.warn('OAuth callback timeout - showing landing');
-            showPage('landing');
-            hideAppLoading();
-            showToast('Erro no login com Google. Tente novamente.');
+            console.log('SDK não processou tokens automaticamente, tentando fallback manual...');
+            const manualSuccess = await tryManualSessionFromUrl();
+            if (!manualSuccess) {
+              // Final timeout - give up after more time
+              setTimeout(() => {
+                if (!state.user) {
+                  console.warn('OAuth callback timeout final - mostrando landing');
+                  showPage('landing');
+                  hideAppLoading();
+                  showToast('Erro no login com Google. Tente novamente.');
+                }
+              }, 5000);
+            }
           }
-        }, 10000); // 10 second timeout
+        }, 3000); // Wait 3 seconds before trying manual fallback
       }
     } catch (err) {
       console.error('getSession error:', err);
