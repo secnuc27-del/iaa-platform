@@ -2310,19 +2310,18 @@
     }
 
     .footer-inner {
-      max-width: 1100px;
       margin: 0 auto;
       display: flex;
       flex-direction: column;
       gap: 0;
     }
 
-    /* Top row: logo | links | copyright */
+    /* Top row: logo | links */
     .footer-main {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 28px 32px;
+      padding: 28px 48px;
       gap: 24px;
     }
 
@@ -2403,7 +2402,7 @@
     /* Bottom bar */
     .footer-bottom {
       border-top: 1px solid rgba(148, 163, 184, .08);
-      padding: 14px 32px;
+      padding: 14px 48px;
       text-align: center;
     }
 
