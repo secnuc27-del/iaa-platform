@@ -2382,6 +2382,19 @@
       background: rgba(99, 102, 241, .08);
     }
 
+    .footer-copy-small {
+      text-align: center;
+      font-size: 11px;
+      color: rgba(255, 255, 255, 0.4);
+      padding: 0 40px 16px;
+      letter-spacing: 0.3px;
+    }
+
+    .footer-copy-small strong {
+      color: rgba(255, 255, 255, 0.6);
+      font-weight: 500;
+    }
+
     @media (max-width: 768px) {
       .footer-row {
         flex-direction: column;
