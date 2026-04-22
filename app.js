@@ -25,7 +25,7 @@ try {
         flowType: 'implicit',
         autoRefreshToken: true,
         persistSession: true,
-        detectSessionInUrl: false,  // DISABLED - we handle tokens manually to avoid clock skew issues
+        detectSessionInUrl: true,
         storageKey: 'iaa-supabase-auth'
       }
     });
@@ -264,6 +264,54 @@ async function handleAuthSuccess(user) {
   hideAppLoading();
 }
 
+// Helper: decode base64url (JWT uses URL-safe base64)
+function b64urlDecode(str) {
+  let b64 = str.replace(/-/g, '+').replace(/_/g, '/');
+  while (b64.length % 4) b64 += '=';
+  return atob(b64);
+}
+
+// JWT fallback: decode token and log user in directly
+async function jwtFallbackLogin() {
+  const tokens = extractTokensFromHash();
+  if (!tokens || !tokens.access_token) return false;
+  
+  try {
+    const parts = tokens.access_token.split('.');
+    const payload = JSON.parse(b64urlDecode(parts[1]));
+    console.log('JWT fallback — sub:', payload.sub, 'email:', payload.email);
+    
+    if (payload.sub) {
+      const userEmail = payload.email || '';
+      const userName = payload.user_metadata?.full_name || payload.user_metadata?.name || userEmail.split('@')[0];
+      
+      const userData = {
+        id: payload.sub,
+        email: userEmail,
+        user_metadata: { full_name: userName, ...(payload.user_metadata || {}) }
+      };
+      
+      localDB.setCurrentUser(userData);
+      history.replaceState(null, '', window.location.pathname);
+      await loadProfile(payload.sub);
+      await handleAuthSuccess(userData);
+      
+      // Background: try to establish real session
+      if (tokens.refresh_token) {
+        setTimeout(async () => {
+          try {
+            await db.auth.refreshSession({ refresh_token: tokens.refresh_token });
+          } catch (e) { /* silent */ }
+        }, 3000);
+      }
+      return true;
+    }
+  } catch (e) {
+    console.error('JWT fallback falhou:', e);
+  }
+  return false;
+}
+
 // Initialize authentication
 (async function initAuth() {
   const isCallback = isOAuthCallback();
@@ -282,6 +330,21 @@ async function handleAuthSuccess(user) {
       return;
     }
     showAppLoading('Finalizando login com Google...');
+    
+    // Set a timeout — if SDK doesn't resolve in 6s, use JWT fallback
+    setTimeout(async () => {
+      if (!state.user) {
+        console.warn('OAuth timeout — usando JWT fallback...');
+        const ok = await jwtFallbackLogin();
+        if (!ok) {
+          history.replaceState(null, '', window.location.pathname);
+          _authNavigationDone = true;
+          showPage('login');
+          hideAppLoading();
+          showToast('Erro no login com Google. Tente novamente.');
+        }
+      }
+    }, 6000);
   }
 
   function fallbackToLocalAuth() {
@@ -314,179 +377,46 @@ async function handleAuthSuccess(user) {
     return;
   }
 
-  // Set useLocalMode = false since db exists
   useLocalMode = false;
 
-  // Register auth state change listener FIRST
+  // Auth state change listener — handles SDK auto-detection of tokens
   db.auth.onAuthStateChange(async (event, session) => {
     console.log('onAuthStateChange:', event, !!session);
 
-    if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION') {
+    if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
       if (session && session.user) {
         await loadProfile(session.user.id);
         await handleAuthSuccess(session.user);
       }
+    } else if (event === 'INITIAL_SESSION') {
+      if (session && session.user) {
+        await loadProfile(session.user.id);
+        await handleAuthSuccess(session.user);
+      } else if (!isCallback && !_authNavigationDone) {
+        // No session on normal load — check reachability
+        const isReachable = await testSupabaseConnection();
+        if (!isReachable) {
+          fallbackToLocalAuth();
+        } else {
+          _authNavigationDone = true;
+          showPage('landing');
+          hideAppLoading();
+        }
+      }
+      // If isCallback and no session, the timeout above will handle it
     } else if (event === 'SIGNED_OUT') {
       state.user = null;
       state.profile = null;
       localDB.setCurrentUser(null);
       if (_authNavigationDone) {
-        // Only navigate if we were previously logged in
         showPage('landing');
       }
     }
   });
-
-  // Now process the session
-  try {
-    // If OAuth callback — handle tokens manually (detectSessionInUrl is disabled to avoid clock skew)
-    if (isCallback) {
-      console.log('OAuth callback detectado — processando tokens manualmente...');
-      
-      const tokens = extractTokensFromHash();
-      if (tokens) {
-        // Helper: decode base64url (JWT uses URL-safe base64)
-        function b64urlDecode(str) {
-          let b64 = str.replace(/-/g, '+').replace(/_/g, '/');
-          while (b64.length % 4) b64 += '=';
-          return atob(b64);
-        }
-        
-        // Strategy 1: Try setSession
-        try {
-          const { data, error } = await db.auth.setSession({
-            access_token: tokens.access_token,
-            refresh_token: tokens.refresh_token
-          });
-          if (!error && data?.session) {
-            console.log('✅ setSession funcionou!');
-            history.replaceState(null, '', window.location.pathname);
-            await loadProfile(data.session.user.id);
-            await handleAuthSuccess(data.session.user);
-            return;
-          }
-          console.warn('setSession falhou:', error?.message);
-        } catch (e) {
-          console.warn('setSession error:', e.message);
-        }
-        
-        // Strategy 2: Try refreshSession
-        if (tokens.refresh_token) {
-          try {
-            const { data: rd, error: re } = await db.auth.refreshSession({
-              refresh_token: tokens.refresh_token
-            });
-            if (!re && rd?.session) {
-              console.log('✅ refreshSession funcionou!');
-              history.replaceState(null, '', window.location.pathname);
-              await loadProfile(rd.session.user.id);
-              await handleAuthSuccess(rd.session.user);
-              return;
-            }
-            console.warn('refreshSession falhou:', re?.message);
-          } catch (e) {
-            console.warn('refreshSession error:', e.message);
-          }
-        }
-        
-        // Strategy 3 (FALLBACK): Decode JWT manually and navigate user
-        try {
-          const parts = tokens.access_token.split('.');
-          const payload = JSON.parse(b64urlDecode(parts[1]));
-          console.log('JWT decodificado (fallback):', payload.sub, payload.email);
-          
-          if (payload.sub) {
-            const userEmail = payload.email || payload.sub + '@google.com';
-            const userName = payload.user_metadata?.full_name || payload.user_metadata?.name || userEmail.split('@')[0];
-            
-            // Save user to local storage as fallback
-            const userData = {
-              id: payload.sub,
-              email: userEmail,
-              user_metadata: { full_name: userName, ...(payload.user_metadata || {}) }
-            };
-            
-            localDB.setCurrentUser(userData);
-            history.replaceState(null, '', window.location.pathname);
-            
-            await loadProfile(payload.sub);
-            await handleAuthSuccess(userData);
-            
-            // Try background refresh
-            if (tokens.refresh_token) {
-              setTimeout(async () => {
-                try {
-                  await db.auth.refreshSession({ refresh_token: tokens.refresh_token });
-                  console.log('Background refresh OK');
-                } catch (e) { /* silent */ }
-              }, 3000);
-            }
-            return;
-          }
-        } catch (e) {
-          console.error('JWT decode falhou:', e);
-        }
-      }
-      
-      // Everything failed
-      console.warn('OAuth: todos os métodos falharam');
-      history.replaceState(null, '', window.location.pathname);
-      _authNavigationDone = true;
-      showPage('login');
-      hideAppLoading();
-      showToast('Erro no login com Google. Tente novamente.');
-      return;
-    }
     
-    // Normal page load — check for existing session
-    const { data: { session }, error: sessionError } = await db.auth.getSession();
-    console.log('getSession result: session=', !!session, 'error=', sessionError?.message);
-
-    if (session && session.user) {
-      await loadProfile(session.user.id);
-      await handleAuthSuccess(session.user);
-      return;
-    }
-
-    // Normal page load (not callback) — no session
-    if (!_authNavigationDone) {
-      // Check if Supabase is reachable
-      const isReachable = await testSupabaseConnection();
-      if (!isReachable) {
-        fallbackToLocalAuth();
-      } else {
-        _authNavigationDone = true;
-        showPage('landing');
-        hideAppLoading();
-      }
-    }
-
-  } catch (err) {
-    console.error('initAuth getSession error:', err);
-    
-    if (isCallback) {
-      // Try manual extraction as last resort
-      try {
-        const manualOk = await tryManualSessionFromUrl();
-        if (manualOk) {
-          const { data: { session: s3 } } = await db.auth.getSession();
-          if (s3 && s3.user) {
-            await loadProfile(s3.user.id);
-            await handleAuthSuccess(s3.user);
-            return;
-          }
-        }
-      } catch (e2) { console.error('Manual extraction error:', e2); }
-      
-      history.replaceState(null, '', window.location.pathname);
-      _authNavigationDone = true;
-      showPage('login');
-      hideAppLoading();
-      showToast('Erro no login com Google. Tente novamente.');
-    } else {
-      fallbackToLocalAuth();
-    }
-  }
+  // The onAuthStateChange INITIAL_SESSION event handles everything now.
+  // For callbacks, the 6-second timeout handles JWT fallback.
+  // No need for explicit getSession here.
 })();
 
 async function loadProfile(userId) {
