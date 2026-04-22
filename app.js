@@ -147,8 +147,26 @@ async function testSupabaseConnection() {
   }
 }
 
+// Detect if current URL has OAuth callback tokens (from Google redirect)
+function isOAuthCallback() {
+  const hash = window.location.hash;
+  const search = window.location.search;
+  // Supabase OAuth returns tokens in hash fragment or as query params
+  return hash.includes('access_token') || 
+         hash.includes('refresh_token') || 
+         search.includes('code=') ||
+         hash.includes('error_description');
+}
+
 // Initialize authentication
 (async function initAuth() {
+  const isCallback = isOAuthCallback();
+  console.log('initAuth: isOAuthCallback =', isCallback);
+
+  if (isCallback) {
+    showAppLoading('Finalizando login com Google...');
+  }
+
   function fallbackToLocalAuth() {
     useLocalMode = true;
     console.log('Usando modo local (localStorage)');
@@ -167,6 +185,9 @@ async function testSupabaseConnection() {
       } else {
         showPage('profile-selection');
       }
+    } else {
+      // No saved user, show landing
+      showPage('landing');
     }
     hideAppLoading();
   }
@@ -174,8 +195,12 @@ async function testSupabaseConnection() {
   if (db) {
     // Register the listener IMMEDIATELY so we don't miss the OAuth redirect event
     useLocalMode = false;
+    let authHandled = false;
+
     db.auth.onAuthStateChange(async (event, session) => {
       console.log('onAuthStateChange', event, session);
+      authHandled = true;
+
       if (session && session.user) {
         state.user = session.user;
         await loadProfile(session.user.id);
@@ -189,20 +214,59 @@ async function testSupabaseConnection() {
             showDash('feed');
           }
         }
+        // Clean up URL hash/params after successful OAuth
+        if (isCallback) {
+          history.replaceState(null, '', window.location.pathname);
+        }
+        hideAppLoading();
       } else {
         state.user = null;
         state.profile = null;
+        // Only show landing if this is NOT an OAuth callback (still processing)
+        if (!isCallback) {
+          const currentPage = document.querySelector('.page.active')?.id;
+          if (!currentPage) {
+            showPage('landing');
+          }
+          hideAppLoading();
+        }
       }
-      hideAppLoading();
     });
 
     // Check session explicitly
-    const { data: { session } } = await db.auth.getSession();
-    
-    // If no active session, test connection to decide if we should fallback to local mode
-    if (!session) {
-      const isReachable = await testSupabaseConnection();
-      if (!isReachable) {
+    try {
+      const { data: { session } } = await db.auth.getSession();
+      console.log('getSession result:', !!session);
+      
+      if (session && session.user) {
+        // Session exists - onAuthStateChange will handle navigation
+        // Just make sure loading stays visible until it fires
+      } else if (!isCallback) {
+        // No session and NOT an OAuth callback - check connection and show landing
+        const isReachable = await testSupabaseConnection();
+        if (!isReachable) {
+          fallbackToLocalAuth();
+        } else {
+          // Supabase is reachable but no session
+          showPage('landing');
+          hideAppLoading();
+        }
+      }
+      // If isCallback but no session yet, wait for onAuthStateChange
+      // Set a timeout to avoid infinite loading
+      if (isCallback) {
+        setTimeout(() => {
+          if (!state.user) {
+            console.warn('OAuth callback timeout - showing landing');
+            showPage('landing');
+            hideAppLoading();
+            showToast('Erro no login com Google. Tente novamente.');
+          }
+        }, 10000); // 10 second timeout
+      }
+    } catch (err) {
+      console.error('getSession error:', err);
+      if (!isCallback) {
         fallbackToLocalAuth();
       }
     }
@@ -518,10 +582,14 @@ async function doGoogleLogin() {
   showAppLoading('Conectando ao Google...');
 
   try {
+    // Use clean base URL for redirect (without hash/query params)
+    const baseUrl = window.location.origin + window.location.pathname;
+    console.log('OAuth redirectTo:', baseUrl);
+    
     const { error } = await db.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: window.location.href.split('#')[0],
+        redirectTo: baseUrl,
         queryParams: { prompt: 'select_account' }
       }
     });
