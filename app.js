@@ -20,7 +20,14 @@ let useLocalMode = false;
 
 try {
   if (supabaseConfigured) {
-    db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      auth: {
+        flowType: 'implicit',          // Use implicit flow (tokens in URL hash) - works on static sites
+        autoRefreshToken: true,         // Auto refresh expired tokens
+        persistSession: true,           // Save session to localStorage
+        detectSessionInUrl: true        // Detect OAuth callback tokens in URL
+      }
+    });
   }
 } catch (err) {
   console.error('Erro ao criar cliente Supabase:', err);
