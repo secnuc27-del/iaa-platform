@@ -149,15 +149,30 @@ async function testSupabaseConnection() {
 
 // Initialize authentication
 (async function initAuth() {
-  let supabaseReachable = false;
-
-  if (db) {
-    supabaseReachable = await testSupabaseConnection();
-    console.log('Supabase acessível:', supabaseReachable);
+  function fallbackToLocalAuth() {
+    useLocalMode = true;
+    console.log('Usando modo local (localStorage)');
+    const savedUser = localDB.getCurrentUser();
+    if (savedUser) {
+      state.user = savedUser;
+      const profile = localDB.getProfile(savedUser.id);
+      if (profile) {
+        state.profile = profile;
+        state.dbReady = true;
+      }
+      updateAvatarUI();
+      if (state.profile && state.profile.profile_type) {
+        showPage('dashboard');
+        showDash('feed');
+      } else {
+        showPage('profile-selection');
+      }
+    }
+    hideAppLoading();
   }
 
-  if (db && supabaseReachable) {
-    // Use real Supabase
+  if (db) {
+    // Register the listener IMMEDIATELY so we don't miss the OAuth redirect event
     useLocalMode = false;
     db.auth.onAuthStateChange(async (event, session) => {
       console.log('onAuthStateChange', event, session);
@@ -180,29 +195,20 @@ async function testSupabaseConnection() {
       }
       hideAppLoading();
     });
-  } else {
-    // Fallback to local mode
-    useLocalMode = true;
-    console.log('Usando modo local (localStorage)');
 
-    // Check for existing local session
-    const savedUser = localDB.getCurrentUser();
-    if (savedUser) {
-      state.user = savedUser;
-      const profile = localDB.getProfile(savedUser.id);
-      if (profile) {
-        state.profile = profile;
-        state.dbReady = true;
-      }
-      updateAvatarUI();
-      if (state.profile && state.profile.profile_type) {
-        showPage('dashboard');
-        showDash('feed');
-      } else {
-        showPage('profile-selection');
+    // Check session explicitly
+    const { data: { session } } = await db.auth.getSession();
+    
+    // If no active session, test connection to decide if we should fallback to local mode
+    if (!session) {
+      const isReachable = await testSupabaseConnection();
+      if (!isReachable) {
+        fallbackToLocalAuth();
       }
     }
-    hideAppLoading();
+  } else {
+    // Supabase not configured
+    fallbackToLocalAuth();
   }
 })();
 
