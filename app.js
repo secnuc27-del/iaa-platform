@@ -8,6 +8,19 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 
 const { createClient } = supabase;
 
+// =============================================
+// TIMEOUT HELPER — C1
+// Envolve qualquer Promise com um timeout configurável.
+// Se o Supabase demorar mais que `ms` ms, a Promise rejeita com Error('timeout').
+// =============================================
+function withTimeout(promise, ms) {
+  ms = ms || 6000;
+  const timeoutPromise = new Promise(function(_, reject) {
+    setTimeout(function() { reject(new Error('timeout')); }, ms);
+  });
+  return Promise.race([promise, timeoutPromise]);
+}
+
 // Validate config
 const supabaseConfigured =
   SUPABASE_URL &&
@@ -113,6 +126,20 @@ const localDB = {
   getAllProfiles() {
     try { return JSON.parse(localStorage.getItem('iaa-profiles') || '[]'); }
     catch { return []; }
+  },
+  getVideos() {
+    try { return JSON.parse(localStorage.getItem('iaa-videos') || '[]'); }
+    catch { return []; }
+  },
+  saveVideo(v) {
+    try { const videos = this.getVideos(); videos.unshift(v); localStorage.setItem('iaa-videos', JSON.stringify(videos)); } catch { }
+  },
+  getPhotos() {
+    try { return JSON.parse(localStorage.getItem('iaa-photos') || '[]'); }
+    catch { return []; }
+  },
+  savePhoto(ph) {
+    try { const photos = this.getPhotos(); photos.unshift(ph); localStorage.setItem('iaa-photos', JSON.stringify(photos)); } catch { }
   }
 };
 
@@ -190,11 +217,18 @@ function isOAuthCallback() {
   return hash.includes('access_token') || 
          hash.includes('refresh_token') || 
          search.includes('code=') ||
+         search.includes('error=') ||
          hash.includes('error_description');
 }
 
 // Check if the hash contains an OAuth error
 function getOAuthError() {
+  // Check query params first (PKCE flow errors)
+  const searchParams = new URLSearchParams(window.location.search);
+  const searchErr = searchParams.get('error_description') || searchParams.get('error');
+  if (searchErr) return searchErr;
+
+  // Then check hash (implicit flow errors)
   const hash = window.location.hash.substring(1);
   if (!hash) return null;
   const params = new URLSearchParams(hash);
@@ -265,9 +299,9 @@ async function tryManualSessionFromUrl() {
 // Flag to track if navigation was already handled
 let _authNavigationDone = false;
 
-// Navigate user after successful auth
 async function handleAuthSuccess(user) {
-  if (_authNavigationDone && state.user) return; // Already handled
+  hideAppLoading();
+  if (state.user && state.user.id === user.id && _authNavigationDone) return; // Já tratado para este usuário
   _authNavigationDone = true;
   state.user = user;
   
@@ -277,11 +311,26 @@ async function handleAuthSuccess(user) {
   updateAvatarUI();
   
   if (!state.profile || !state.profile.profile_type) {
-    showPage('profile-selection');
+    // Sem perfil definido
+    if (_pendingPublish) {
+      showPage('profile-selection'); // Forçar escolha provider/business
+    } else {
+      showPublicArea(); // Deixar explorar livremente
+      showToast('Bem-vindo ao IAA! 👋');
+    }
   } else {
-    showPage('dashboard');
-    showDash('feed');
-    showToast('Bem-vindo de volta! 👋');
+    const type = state.profile.profile_type;
+    if (_pendingPublish && (type === 'provider' || type === 'business')) {
+      _pendingPublish = false;
+      enterPanel(type, 'publications');
+    } else if (_pendingPublish && type === 'user') {
+      // Tem conta de usuário mas quer publicar → escolher tipo
+      _pendingPublish = false;
+      showPage('profile-selection');
+    } else {
+      enterPanel(type);
+      showToast('Bem-vindo de volta! 👋');
+    }
   }
   
   // Clean URL hash if present
@@ -375,6 +424,7 @@ async function jwtFallbackLogin() {
     }, 6000);
   }
 
+  // Fallback only when Supabase client não existe mesmo
   function fallbackToLocalAuth() {
     useLocalMode = true;
     _authNavigationDone = true;
@@ -389,10 +439,9 @@ async function jwtFallbackLogin() {
       }
       updateAvatarUI();
       if (state.profile && state.profile.profile_type) {
-        showPage('dashboard');
-        showDash('feed');
+        enterPanel(state.profile.profile_type);
       } else {
-        showPage('profile-selection');
+        showPublicArea(); // Sem perfil → explorar livremente
       }
     } else {
       showPage('landing');
@@ -407,54 +456,75 @@ async function jwtFallbackLogin() {
 
   useLocalMode = false;
 
-  // Auth state change listener
+  // C8 — Testar conexão proativamente antes de registrar listeners
+  // Se o Supabase não estiver acessível, ativar modo offline imediatamente
+  testSupabaseConnection().then(function(reachable) {
+    if (!reachable) {
+      console.warn('C8: Supabase incessível — ativando modo local automaticamente');
+      useLocalMode = true;
+      showToast('📡 Modo offline ativo — dados locais');
+    }
+  });
+
+  // Auth state change listener — detecta sessão existente (INITIAL_SESSION),
+  // novos logins (SIGNED_IN) e renovação de token (TOKEN_REFRESHED)
   db.auth.onAuthStateChange(async (event, session) => {
     console.log('onAuthStateChange:', event, !!session);
     if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+      // Se doLogin já tratou a navegação, não duplicar
+      if (_authNavigationDone) return;
       if (session && session.user) {
         await loadProfile(session.user.id);
         await handleAuthSuccess(session.user);
+      }
+    } else if (event === 'INITIAL_SESSION') {
+      if (session && session.user && !_authNavigationDone) {
+        await loadProfile(session.user.id);
+        await handleAuthSuccess(session.user);
+      } else if (!session && !_authNavigationDone && !isCallback) {
+        // Nenhuma sessão ativa ao carregar — mostrar landing imediatamente
+        _authNavigationDone = true;
+        showPage('landing');
+        hideAppLoading();
       }
     } else if (event === 'SIGNED_OUT') {
       state.user = null;
       state.profile = null;
       localDB.setCurrentUser(null);
-      if (_authNavigationDone) {
-        showPage('landing');
-      }
+      _authNavigationDone = false;
+      showPage('landing');
     }
   });
-    
-  // Explicitly check session on startup
-  try {
-    const { data, error } = await db.auth.getSession();
-    const session = data?.session;
-    
-    if (session && session.user) {
-      await loadProfile(session.user.id);
-      await handleAuthSuccess(session.user);
-    } else if (!isCallback && !_authNavigationDone) {
-      // No session on normal load
-      const isReachable = await testSupabaseConnection();
-      if (!isReachable) {
-        fallbackToLocalAuth();
+
+  // Fallback: se o onAuthStateChange não resolver em 4s, tenta getSession direto
+  setTimeout(async () => {
+    if (_authNavigationDone || isCallback) return;
+    console.log('onAuthStateChange demorou — chamando getSession direto...');
+    try {
+      // C7 — getSession com timeout de 5s para não travar
+      const { data } = await withTimeout(db.auth.getSession(), 5000);
+      if (_authNavigationDone) return;
+      if (data?.session?.user) {
+        await loadProfile(data.session.user.id);
+        await handleAuthSuccess(data.session.user);
       } else {
-        // If local user exists and we are reachable, they might have logged in locally before.
-        // Let's use local auth if a local user exists.
-        const savedUser = localDB.getCurrentUser();
-        if (savedUser) {
-          fallbackToLocalAuth();
-        } else {
-          _authNavigationDone = true;
-          showPage('landing');
-          hideAppLoading();
+        _authNavigationDone = true;
+        showPage('landing');
+        hideAppLoading();
+      }
+    } catch (err) {
+      console.error('getSession fallback erro:', err.message || err);
+      if (!_authNavigationDone) {
+        _authNavigationDone = true;
+        showPage('landing');
+        hideAppLoading();
+        // Se foi timeout (não só sessão ausente), avisar usuario
+        if (err.message === 'timeout') {
+          showToast('Servidor demorou. Verifique sua conexão.');
         }
       }
     }
-  } catch (err) {
-    console.error('Erro ao verificar sessão:', err);
-    fallbackToLocalAuth();
-  }
+  }, 4000);
 })();
 
 async function loadProfile(userId) {
@@ -505,6 +575,8 @@ async function loadProfile(userId) {
 }
 
 let _loadingTimer;
+let _loadingSafetyTimer; // C2 — safety timer de 10s
+
 function showAppLoading(text) {
   const loader = document.getElementById('app-loading');
   if (!loader) return;
@@ -516,13 +588,25 @@ function showAppLoading(text) {
   loader.style.display = 'flex';
   void loader.offsetWidth;
   loader.classList.remove('hidden');
+
+  // C2 — Safety timer: se o loader ainda estiver visível após 10s, forçar ocultação
+  clearTimeout(_loadingSafetyTimer);
+  _loadingSafetyTimer = setTimeout(function() {
+    const l = document.getElementById('app-loading');
+    if (l && !l.classList.contains('hidden')) {
+      console.warn('showAppLoading safety timer disparado — forçando hide');
+      hideAppLoading();
+      showToast('Tempo esgotado. Verifique sua conexão.');
+    }
+  }, 10000);
 }
 
 function hideAppLoading() {
+  clearTimeout(_loadingSafetyTimer); // C2 — cancelar safety timer ao esconder
   const loader = document.getElementById('app-loading');
   if (!loader) return;
   loader.classList.add('hidden');
-  _loadingTimer = setTimeout(() => {
+  _loadingTimer = setTimeout(function() {
     loader.style.display = 'none';
     const textEl = loader.querySelector('.loading-text');
     if (textEl) textEl.textContent = 'Carregando IAA...';
@@ -530,7 +614,7 @@ function hideAppLoading() {
 }
 
 // Fail-safe: Forçar ocultação da tela de carregamento após 8 segundos
-window.addEventListener('load', () => {
+window.addEventListener('load', function() {
   setTimeout(hideAppLoading, 8000);
 });
 
@@ -562,8 +646,98 @@ function showPage(id) {
 
 function goDash(section) {
   if (!state.user) { showPage('login'); return; }
-  showPage('dashboard');
-  showDash(section);
+  if (state.profile && state.profile.profile_type) {
+    const type = state.profile.profile_type;
+    const panelMap = { user: 'panel-usuario', provider: 'panel-prestador', business: 'panel-empresa' };
+    const panelEl = document.getElementById(panelMap[type]);
+    const isActive = panelEl && panelEl.classList.contains('active');
+    if (isActive) {
+      if (type === 'user' && typeof PanelUsuario !== 'undefined') { PanelUsuario.navigate(section); return; }
+      if (type === 'provider' && typeof PanelPrestador !== 'undefined') { PanelPrestador.navigate(section); return; }
+      if (type === 'business' && typeof PanelEmpresa !== 'undefined') { PanelEmpresa.navigate(section); return; }
+    }
+    enterPanel(type, section);
+  } else {
+    _pendingPublish = true;
+    showPage('profile-selection');
+  }
+}
+
+// =============================================
+// MULTI-TENANT PANEL ROUTING
+// =============================================
+function enterPanel(type, section) {
+  let panelId = 'panel-usuario';
+  if (type === 'provider') panelId = 'panel-prestador';
+  if (type === 'business') panelId = 'panel-empresa';
+  
+  showPage(panelId);
+  
+  // Initialize the correct panel logic
+  // Nota: init() chama navigate('feed') internamente.
+  // Se quisermos ir para outra seção, passamos como argumento para init ou sobrescrevemos depois
+  // Para evitar duplo render, usamos initWithSection
+  if (type === 'user' && typeof PanelUsuario !== 'undefined') {
+    PanelUsuario.initWithSection(section || 'feed');
+  } else if (type === 'provider' && typeof PanelPrestador !== 'undefined') {
+    PanelPrestador.initWithSection(section || 'feed');
+  } else if (type === 'business' && typeof PanelEmpresa !== 'undefined') {
+    PanelEmpresa.initWithSection(section || 'feed');
+  } else {
+    // Panel JS file not loaded — show error
+    const contentId = type === 'user' ? 'user-content' : type === 'provider' ? 'prestador-content' : 'empresa-content';
+    const c = document.getElementById(contentId);
+    if (c) c.innerHTML = '<div style="padding:48px;text-align:center;color:var(--text2)"><div style="font-size:40px;margin-bottom:12px">⚠️</div><p style="font-weight:700">Erro ao carregar painel</p><p style="font-size:13px;margin-top:6px">Verifique se os arquivos da pasta <code>panels/</code> estão no servidor.</p></div>';
+  }
+}
+
+async function saveCompleteProfile(type) {
+  showAppLoading('Salvando informações...');
+  
+  // Coletar dados do formulário correto
+  let updates = {};
+  if (type === 'user') {
+    updates = {
+      full_name: document.getElementById('cp-user-name').value,
+      city: document.getElementById('cp-user-city').value,
+      interests: document.getElementById('cp-user-interests').value
+    };
+  } else if (type === 'provider') {
+    updates = {
+      full_name: document.getElementById('cp-prov-name').value,
+      service_title: document.getElementById('cp-prov-service').value,
+      city: document.getElementById('cp-prov-city').value,
+      bio: document.getElementById('cp-prov-bio').value,
+      phone: document.getElementById('cp-prov-phone').value,
+      schedule: document.getElementById('cp-prov-schedule').value
+    };
+  } else if (type === 'business') {
+    updates = {
+      full_name: document.getElementById('cp-biz-name').value,
+      city: document.getElementById('cp-biz-city').value,
+      bio: document.getElementById('cp-biz-bio').value,
+      phone: document.getElementById('cp-biz-phone').value,
+      schedule: document.getElementById('cp-biz-schedule').value
+    };
+  }
+
+  // Atualizar estado
+  state.profile = { ...state.profile, ...updates };
+
+  // Salvar no DB ou Local
+  if (useLocalMode) {
+    localDB.saveProfile(state.profile);
+  } else if (db) {
+    try {
+      await db.from('profiles').update(updates).eq('id', state.user.id);
+    } catch(err) {
+      console.error(err);
+    }
+  }
+
+  hideAppLoading();
+  // Mostrar tela de boas-vindas
+  showPage('welcome-' + type);
 }
 
 // =============================================
@@ -610,11 +784,15 @@ async function doLogin() {
       hideAppLoading();
 
       if (profile && profile.profile_type) {
-        showPage('dashboard');
-        showDash('feed');
+        enterPanel(profile.profile_type);
         showToast('Bem-vindo de volta! 👋');
       } else {
-        showPage('profile-selection');
+        if (_pendingPublish) {
+          showPage('profile-selection');
+        } else {
+          showPublicArea();
+          showToast('Bem-vindo! 👋');
+        }
       }
     }, 600);
     return;
@@ -629,8 +807,18 @@ async function doLogin() {
     return;
   }
 
+  // Resetar flag para garantir que a navegação após login funcione
+  _authNavigationDone = false;
+  // C3 — guard local para evitar dupla navegação se onAuthStateChange disparar
+  // antes do signInWithPassword retornar
+  var _loginGuardDone = false;
+
   try {
-    const { data, error } = await db.auth.signInWithPassword({ email, password: pwd });
+    // C3 — Timeout de 8s: se o Supabase travar, cair no catch com Error('timeout')
+    const { data, error } = await withTimeout(
+      db.auth.signInWithPassword({ email, password: pwd }),
+      8000
+    );
     console.log('doLogin result:', { data, error });
     if (btn) { btn.textContent = 'Entrar'; btn.disabled = false; }
 
@@ -650,18 +838,48 @@ async function doLogin() {
 
     if (data && data.session) {
       console.log('Login bem-sucedido');
-      // Navigate immediately after successful login
+      if (_loginGuardDone) return; // Evita dupla navegação
+      _loginGuardDone = true;
+      // Navegar diretamente — bloqueia onAuthStateChange de duplicar navegação
+      _authNavigationDone = true;
+      state.user = data.user;
+      localDB.setCurrentUser({ id: data.user.id, email: data.user.email, user_metadata: data.user.user_metadata });
+      if (btn) { btn.textContent = 'Entrar'; btn.disabled = false; }
       await loadProfile(data.user.id);
-      await handleAuthSuccess(data.user);
+      updateAvatarUI();
+      hideAppLoading();
+      const ptype = state.profile?.profile_type;
+      if (ptype === 'provider' || ptype === 'business' || ptype === 'user') {
+        enterPanel(ptype);
+        showToast('Bem-vindo de volta! 👋');
+      } else if (_pendingPublish) {
+        showPage('profile-selection');
+      } else {
+        showPublicArea();
+        showToast('Bem-vindo! 👋');
+      }
+    } else {
+      // session nula (email não confirmado etc) — NUNCA deixar loader preso
+      hideAppLoading();
+      if (btn) { btn.textContent = 'Entrar'; btn.disabled = false; }
+      if (data && data.user && !data.session) {
+        showAuthError('login-error', 'Confirme seu e-mail antes de entrar. Verifique sua caixa de entrada.');
+      } else {
+        showAuthError('login-error', 'Erro inesperado. Tente novamente.');
+      }
     }
   } catch (err) {
     hideAppLoading();
     if (btn) { btn.textContent = 'Entrar'; btn.disabled = false; }
-    console.error('Login catch:', err);
+    console.error('Login catch:', err.message || err);
 
-    // If Supabase failed, try local mode
+    // C3 — Timeout ou falha de rede: ativar modo local
     useLocalMode = true;
-    showAuthError('login-error', 'Servidor indisponível. Usando modo offline.');
+    if (err.message === 'timeout') {
+      showToast('Servidor demorou para responder. Usando conta offline.');
+    } else {
+      showAuthError('login-error', 'Servidor indisponível. Usando modo offline.');
+    }
     doLogin();
   }
 }
@@ -717,15 +935,21 @@ async function doSignup() {
   }
 
   // Supabase signup
+  // Resetar flag para garantir que navegação após cadastro funcione
+  _authNavigationDone = false;
   try {
-    const { data, error } = await db.auth.signUp({
-      email,
-      password: pwd,
-      options: {
-        data: { full_name: name },
-        emailRedirectTo: window.location.href.split('#')[0]
-      }
-    });
+    // C4 — Timeout de 8s: se o Supabase travar, cair no catch com Error('timeout')
+    const { data, error } = await withTimeout(
+      db.auth.signUp({
+        email,
+        password: pwd,
+        options: {
+          data: { full_name: name },
+          emailRedirectTo: window.location.href.split('#')[0]
+        }
+      }),
+      8000
+    );
 
     console.log('doSignup result:', { data, error });
     btn.textContent = 'Criar conta'; btn.disabled = false;
@@ -746,7 +970,11 @@ async function doSignup() {
     if (data.session) {
       state.user = data.user;
       hideAppLoading();
-      showPage('profile-selection');
+      if (_pendingPublish) {
+        showPage('profile-selection');
+      } else {
+        showPublicArea();
+      }
       showToast('Conta criada com sucesso! 🎉');
       return;
     }
@@ -770,10 +998,13 @@ async function doSignup() {
   } catch (err) {
     hideAppLoading();
     btn.textContent = 'Criar conta'; btn.disabled = false;
-    console.error('Signup catch:', err);
+    console.error('Signup catch:', err.message || err);
 
-    // If Supabase failed, try local mode
+    // C4 — Timeout ou falha de rede: ativar modo local
     useLocalMode = true;
+    if (err.message === 'timeout') {
+      showToast('Servidor demorou para responder. Criando conta offline.');
+    }
     doSignup();
   }
 }
@@ -819,7 +1050,8 @@ async function doGoogleLogin() {
       provider: 'google',
       options: {
         redirectTo: baseUrl,
-        queryParams: { prompt: 'select_account' }
+        queryParams: { prompt: 'select_account', access_type: 'offline' },
+        skipBrowserRedirect: false
       }
     });
     console.log('signInWithOAuth result:', { data, error });
@@ -976,7 +1208,11 @@ async function verifyEmailCode() {
       setOtpState('success');
       state.user = data.user;
       hideAppLoading();
-      showPage('profile-selection');
+      if (_pendingPublish) {
+        showPage('profile-selection');
+      } else {
+        showPublicArea();
+      }
       showToast('E-mail verificado com sucesso! ✅');
     } else if (data && data.user) {
       // Have user but no session, try logging in
@@ -988,7 +1224,11 @@ async function verifyEmailCode() {
       if (loginData && loginData.session) {
         state.user = loginData.user;
         hideAppLoading();
-        showPage('profile-selection');
+        if (_pendingPublish) {
+          showPage('profile-selection');
+        } else {
+          showPublicArea();
+        }
         showToast('E-mail verificado com sucesso! ✅');
       } else {
         hideAppLoading();
@@ -1091,11 +1331,7 @@ async function selectProfile(type) {
     state.dbReady = true;
     hideAppLoading();
     updateLandingStats(); // Atualizar contadores
-    showPage('dashboard');
-    showDash('feed');
-    const firstNav = document.querySelectorAll('.nav-item')[0];
-    if (firstNav) firstNav.classList.add('active');
-    showToast('Perfil configurado! Bem-vindo ao IAA! 🎉');
+    showPage('complete-profile-' + type);
     return;
   }
 
@@ -1119,11 +1355,7 @@ async function selectProfile(type) {
 
     await loadProfile(state.user.id);
     hideAppLoading();
-    showPage('dashboard');
-    showDash('feed');
-    const firstNav = document.querySelectorAll('.nav-item')[0];
-    if (firstNav) firstNav.classList.add('active');
-    showToast('Perfil configurado! Bem-vindo ao IAA! 🎉');
+    showPage('complete-profile-' + type);
   } catch (err) {
     hideAppLoading();
     console.error('selectProfile catch:', err);
@@ -1139,6 +1371,8 @@ async function doLogout() {
   localDB.setCurrentUser(null);
   state.user = null;
   state.profile = null;
+  _pendingPublish = false;
+  _authNavigationDone = false; // Permite novo login na mesma sessão do navegador
   showPage('landing');
   showToast('Sessão encerrada.');
 }
@@ -1160,9 +1394,42 @@ function togglePwd(id, btn) {
 // SIDEBAR & THEME
 // =============================================
 function toggleSidebar() {
-  const s = document.getElementById('sidebar');
-  if (window.innerWidth <= 768) s.classList.toggle('mobile-open');
-  else s.classList.toggle('collapsed');
+  // Legacy: try to find any active sidebar
+  const sidebarIds = ['sidebar-usuario', 'sidebar-prestador', 'sidebar-empresa', 'sidebar'];
+  for (const id of sidebarIds) {
+    const s = document.getElementById(id);
+    if (s) {
+      if (window.innerWidth <= 768) s.classList.toggle('mobile-open');
+      else s.classList.toggle('collapsed');
+      return;
+    }
+  }
+}
+
+// Toggle a specific panel sidebar by ID
+function toggleSidebarPanel(sidebarId) {
+  const s = document.getElementById(sidebarId);
+  if (!s) return;
+  if (window.innerWidth <= 768) {
+    const isOpen = s.classList.toggle('mobile-open');
+    // Gerenciar backdrop
+    let backdrop = document.getElementById('sidebar-mobile-backdrop');
+    if (!backdrop) {
+      backdrop = document.createElement('div');
+      backdrop.id = 'sidebar-mobile-backdrop';
+      backdrop.className = 'sidebar-mobile-backdrop';
+      backdrop.onclick = () => {
+        s.classList.remove('mobile-open');
+        backdrop.classList.remove('visible');
+        document.body.style.overflow = '';
+      };
+      document.body.appendChild(backdrop);
+    }
+    backdrop.classList.toggle('visible', isOpen);
+    document.body.style.overflow = isOpen ? 'hidden' : '';
+  } else {
+    s.classList.toggle('collapsed');
+  }
 }
 
 function toggleTheme() {
@@ -1197,17 +1464,6 @@ function updateAvatarUI() {
 // =============================================
 // DASHBOARD SECTION RENDERING
 // =============================================
-function showDash(section) {
-  const c = document.getElementById('dash-content');
-  if (!c) return;
-  const renderer = renders[section];
-  if (renderer) {
-    renderer(c);
-  } else {
-    c.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text2)">Em breve</div>';
-  }
-}
-
 function handleSearch(val) {
   // Could filter current section content
 }
@@ -1222,13 +1478,13 @@ const renders = {
     c.innerHTML = `<div class="feed-wrap">
     <div class="page-header">
       <div><div class="page-title">Início</div><div class="page-sub">Alto Acre conectado</div></div>
-      <button class="btn btn-primary btn-sm" onclick="showDash('publications');setActive(document.querySelectorAll('.nav-item')[8])">+ Publicar</button>
+      <button class="btn btn-primary btn-sm" onclick="goDash('publications')">+ Publicar</button>
     </div>
     <div class="quick-links">
-      <div class="quick-link" onclick="setActive(document.querySelectorAll('.nav-item')[1]);showDash('services')"><div class="quick-link-icon" style="background:rgba(37,99,235,.1)">🔧</div><span>Serviços</span></div>
-      <div class="quick-link" onclick="setActive(document.querySelectorAll('.nav-item')[2]);showDash('businesses')"><div class="quick-link-icon" style="background:rgba(20,184,166,.1)">🏢</div><span>Empresas</span></div>
-      <div class="quick-link" onclick="setActive(document.querySelectorAll('.nav-item')[3]);showDash('jobs')"><div class="quick-link-icon" style="background:rgba(245,158,11,.1)">💼</div><span>Vagas</span></div>
-      <div class="quick-link" onclick="setActive(document.querySelectorAll('.nav-item')[4]);showDash('classifieds')"><div class="quick-link-icon" style="background:rgba(34,197,94,.1)">🏷️</div><span>Classif.</span></div>
+      <div class="quick-link" onclick="goDash('services')"><div class="quick-link-icon" style="background:rgba(37,99,235,.1)">🔧</div><span>Serviços</span></div>
+      <div class="quick-link" onclick="goDash('businesses')"><div class="quick-link-icon" style="background:rgba(20,184,166,.1)">🏢</div><span>Empresas</span></div>
+      <div class="quick-link" onclick="goDash('jobs')"><div class="quick-link-icon" style="background:rgba(245,158,11,.1)">💼</div><span>Vagas</span></div>
+      <div class="quick-link" onclick="goDash('classifieds')"><div class="quick-link-icon" style="background:rgba(34,197,94,.1)">🏷️</div><span>Classif.</span></div>
     </div>
     <div id="feed-items"><div style="text-align:center;padding:40px"><div class="loading-spinner" style="margin:0 auto"></div></div></div>
   </div>`;
@@ -1246,7 +1502,11 @@ const renders = {
     if (useLocalMode) {
       data = localDB.getAllProfiles().filter(p => p.profile_type === 'provider');
     } else if (db) {
-      try { const res = await db.from('profiles').select('*').eq('profile_type', 'provider').order('created_at', { ascending: false }); data = res.data; } catch (err) { }
+      try {
+        const res = await db.from('profiles').select('*').eq('profile_type', 'provider').order('created_at', { ascending: false });
+        if (res.error) console.error('Erro ao carregar serviços:', res.error);
+        data = res.data || null;
+      } catch (err) { console.error('Erro ao carregar serviços:', err); }
     }
     const cont = document.getElementById('service-cards');
     if (cont) {
@@ -1269,7 +1529,11 @@ const renders = {
     if (useLocalMode) {
       data = localDB.getAllProfiles().filter(p => p.profile_type === 'business');
     } else if (db) {
-      try { const res = await db.from('profiles').select('*').eq('profile_type', 'business').order('created_at', { ascending: false }); data = res.data; } catch (err) { }
+      try {
+        const res = await db.from('profiles').select('*').eq('profile_type', 'business').order('created_at', { ascending: false });
+        if (res.error) console.error('Erro ao carregar empresas:', res.error);
+        data = res.data || null;
+      } catch (err) { console.error('Erro ao carregar empresas:', err); }
     }
     const cont = document.getElementById('biz-cards');
     if (cont) {
@@ -1299,7 +1563,11 @@ const renders = {
         return { ...j, profiles: profile || { full_name: 'Empresa', phone: '' } };
       });
     } else if (db) {
-      try { const res = await db.from('jobs').select('*, profiles(full_name,phone,avatar_url)').order('created_at', { ascending: false }); data = res.data; } catch (err) { }
+      try {
+        const res = await db.from('jobs').select('*, profiles(full_name,phone,avatar_url)').order('created_at', { ascending: false });
+        if (res.error) console.error('Erro ao carregar vagas:', res.error);
+        data = res.data || null;
+      } catch (err) { console.error('Erro ao carregar vagas:', err); }
     }
     const cont = document.getElementById('job-cards');
     if (cont) {
@@ -1338,7 +1606,19 @@ const renders = {
       <div style="text-align:center;padding:40px;grid-column:1/-1"><div class="loading-spinner" style="margin:0 auto"></div></div>
     </div>
   </div>`;
-    let data = null; if (db) try { const res = await db.from('videos').select('*, profiles(full_name,avatar_url)').order('created_at', { ascending: false }); data = res.data; } catch (err) { }
+    let data = null;
+    if (useLocalMode) {
+      data = localDB.getVideos().map(v => {
+        const profile = localDB.getProfile(v.user_id);
+        return { ...v, profiles: profile || { full_name: 'Usuário', avatar_url: null } };
+      });
+    } else if (db) {
+      try {
+        const res = await db.from('videos').select('*, profiles(full_name,avatar_url)').order('created_at', { ascending: false });
+        if (res.error) console.error('Erro ao carregar vídeos:', res.error);
+        data = res.data || null;
+      } catch (err) { console.error('Erro ao carregar vídeos:', err); }
+    }
     const cont = document.getElementById('video-grid');
     if (cont) {
       if (!data || data.length === 0) {
@@ -1360,7 +1640,19 @@ const renders = {
       <div style="text-align:center;padding:40px;grid-column:1/-1"><div class="loading-spinner" style="margin:0 auto"></div></div>
     </div>
   </div>`;
-    let data = null; if (db) try { const res = await db.from('photos').select('*, profiles(full_name)').order('created_at', { ascending: false }); data = res.data; } catch (err) { }
+    let data = null;
+    if (useLocalMode) {
+      data = localDB.getPhotos().map(ph => {
+        const profile = localDB.getProfile(ph.user_id);
+        return { ...ph, profiles: profile || { full_name: 'Usuário' } };
+      });
+    } else if (db) {
+      try {
+        const res = await db.from('photos').select('*, profiles(full_name)').order('created_at', { ascending: false });
+        if (res.error) console.error('Erro ao carregar fotos:', res.error);
+        data = res.data || null;
+      } catch (err) { console.error('Erro ao carregar fotos:', err); }
+    }
     const cont = document.getElementById('photo-grid');
     if (cont) {
       if (!data || data.length === 0) {
@@ -1407,7 +1699,7 @@ const renders = {
     <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:20px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
         <h3 style="font-size:15px;font-weight:700">Minhas publicações</h3>
-        <button class="btn btn-outline btn-sm" onclick="setActive(document.querySelectorAll('.nav-item')[8]);showDash('publications')">Ver todas</button>
+        <button class="btn btn-outline btn-sm" onclick="goDash('publications')">Ver todas</button>
       </div>
       <div id="my-pubs-preview"><div style="text-align:center;padding:20px"><div class="loading-spinner" style="margin:0 auto"></div></div></div>
     </div>
@@ -1462,7 +1754,7 @@ const renders = {
     </div>
     <div style="background:rgba(37,99,235,.06);border:1px solid rgba(37,99,235,.15);border-radius:var(--radius);padding:16px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
       <div><p style="font-weight:600;font-size:14px">ℹ️ Como melhorar seu desempenho?</p><p style="font-size:13px;color:var(--text2);margin-top:3px">Adicione foto, descrição completa e contato no perfil.</p></div>
-      <button class="btn btn-outline btn-sm" onclick="setActive(document.querySelectorAll('.nav-item')[7]);showDash('profile')">Completar perfil</button>
+      <button class="btn btn-outline btn-sm" onclick="goDash('profile')">Completar perfil</button>
     </div>
   </div>`;
   },
@@ -1516,6 +1808,21 @@ const renders = {
       <button class="btn btn-primary btn-sm" onclick="window.open('mailto:suporte@iaa.com.br')">✉️ Falar com suporte</button>
     </div>
   </div>`;
+  },
+
+  // --- PERFIL-PRO (alias de profile para prestador) ---
+  'perfil-pro': async (c) => {
+    return renders.profile(c);
+  },
+
+  // --- PROMOCOES (alias de publications para empresa) ---
+  'promocoes': async (c) => {
+    return renders.publications(c);
+  },
+
+  // --- PERFIL (alias genérico de profile) ---
+  'perfil': async (c) => {
+    return renders.profile(c);
   },
 
 }; // end renders
@@ -1824,7 +2131,7 @@ async function deletePub(id) {
   if (useLocalMode) {
     localDB.deletePublication(id);
     showToast('Publicação excluída');
-    showDash('publications');
+    goDash('publications');
     return;
   }
   if (!db) { showToast('Erro de conexão'); return; }
@@ -1832,7 +2139,7 @@ async function deletePub(id) {
     const { error } = await db.from('publications').delete().eq('id', id).eq('user_id', state.user.id);
     if (error) { showToast('Erro ao excluir'); return; }
     showToast('Publicação excluída');
-    showDash('publications');
+    goDash('publications');
   } catch (err) { showToast('Erro inesperado'); }
 }
 
@@ -1952,7 +2259,7 @@ async function savePublication() {
     updateLandingStats();
     closeModal();
     showToast('Publicação criada!');
-    showDash('feed');
+    goDash('feed');
     return;
   }
 
@@ -1962,7 +2269,7 @@ async function savePublication() {
     if (error) { showToast('Erro: ' + error.message); return; }
     closeModal();
     showToast('Publicação criada!');
-    showDash('feed');
+    goDash('feed');
   } catch (err) { showToast('Erro inesperado'); }
 }
 
@@ -2022,7 +2329,7 @@ async function saveJob() {
   if (useLocalMode) {
     localDB.saveJob(jobData);
     updateLandingStats();
-    closeModal(); showToast('Vaga publicada!'); showDash('jobs');
+    closeModal(); showToast('Vaga publicada!'); goDash('jobs');
     return;
   }
 
@@ -2031,7 +2338,7 @@ async function saveJob() {
     const { error } = await db.from('jobs').insert(jobData);
     if (error) { showToast('Erro: ' + error.message); return; }
     updateLandingStats();
-    closeModal(); showToast('Vaga publicada!'); showDash('jobs');
+    closeModal(); showToast('Vaga publicada!'); goDash('jobs');
   } catch (err) { showToast('Erro inesperado'); }
 }
 
@@ -2086,7 +2393,7 @@ async function saveClassified() {
   if (useLocalMode) {
     localDB.saveClassified(clData);
     updateLandingStats();
-    closeModal(); showToast('Anúncio publicado!'); showDash('classifieds');
+    closeModal(); showToast('Anúncio publicado!'); goDash('classifieds');
     return;
   }
 
@@ -2095,7 +2402,7 @@ async function saveClassified() {
     const { error } = await db.from('classifieds').insert(clData);
     if (error) { showToast('Erro: ' + error.message); return; }
     updateLandingStats();
-    closeModal(); showToast('Anúncio publicado!'); showDash('classifieds');
+    closeModal(); showToast('Anúncio publicado!'); goDash('classifieds');
   } catch (err) { showToast('Erro inesperado'); }
 }
 
@@ -2121,9 +2428,27 @@ function openUploadVideo() {
 }
 
 async function saveVideo() {
-  if (!state.user || !db) return;
+  if (!state.user) return;
   const title = document.getElementById('vid-title')?.value.trim();
-  if (!title) { alert('Digite o título'); return; }
+  if (!title) { showToast('Digite o título do vídeo.'); return; }
+
+  // Modo local: salvar no localStorage
+  if (useLocalMode || !db) {
+    const video_url = document.getElementById('vid-url')?.value.trim() || '';
+    const newVideo = {
+      id: 'vid_' + Date.now(),
+      user_id: state.user.id,
+      title,
+      description: document.getElementById('vid-desc')?.value.trim() || '',
+      video_url,
+      created_at: new Date().toISOString(),
+    };
+    localDB.saveVideo(newVideo);
+    closeModal();
+    showToast('Vídeo publicado!');
+    goDash('videos');
+    return;
+  }
 
   const fileInput = document.getElementById('vid-file');
   let video_url = document.getElementById('vid-url')?.value.trim();
@@ -2164,7 +2489,7 @@ async function saveVideo() {
     });
     if (error) throw error;
 
-    closeModal(); showToast('Vídeo publicado!'); showDash('videos');
+    closeModal(); showToast('Vídeo publicado!'); goDash('videos');
   } catch (err) {
     showToast('Erro: ' + (err.message || 'Erro inesperado'));
     if (btn) { btn.disabled = false; btn.textContent = 'Publicar'; }
@@ -2188,7 +2513,24 @@ function openUploadPhoto() {
 }
 
 async function savePhoto() {
-  if (!state.user || !db) return;
+  if (!state.user) return;
+  // Modo local
+  if (useLocalMode || !db) {
+    const photo_url = document.getElementById('photo-url')?.value.trim() || '';
+    if (!photo_url) { showToast('Cole a URL de uma imagem.'); return; }
+    const newPhoto = {
+      id: 'ph_' + Date.now(),
+      user_id: state.user.id,
+      caption: document.getElementById('photo-caption')?.value.trim() || '',
+      photo_url,
+      created_at: new Date().toISOString(),
+    };
+    localDB.savePhoto(newPhoto);
+    closeModal();
+    showToast('Foto publicada!');
+    goDash('photos');
+    return;
+  }
 
   const fileInput = document.getElementById('photo-file');
   let photo_url = document.getElementById('photo-url')?.value.trim();
@@ -2228,7 +2570,7 @@ async function savePhoto() {
     });
     if (error) throw error;
 
-    closeModal(); showToast('Foto publicada!'); showDash('photos');
+    closeModal(); showToast('Foto publicada!'); goDash('photos');
   } catch (err) {
     showToast('Erro: ' + (err.message || 'Erro inesperado'));
     if (btn) { btn.disabled = false; btn.textContent = 'Publicar'; }
@@ -2359,7 +2701,7 @@ async function saveProfile() {
     updateAvatarUI();
     closeModal();
     showToast('Perfil atualizado!');
-    showDash('profile');
+    goDash('profile');
   } catch (err) {
     showToast('Erro inesperado ao salvar perfil.');
   }
@@ -2523,10 +2865,23 @@ async function loadLandingStats() {
     try {
       let query = db.from(t.table).select('*', { count: 'exact', head: true });
       if (t.filter) Object.entries(t.filter).forEach(([k, v]) => { query = query.eq(k, v); });
-      const { count } = await query;
+      // C5 — Timeout de 5s por query individual; se travar, setar 0 (não deixar —)
+      const { count, error } = await withTimeout(query, 5000);
+      if (error) { console.error('Erro ao contar', t.table, error); continue; }
       const el = document.getElementById(t.id);
       if (el) el.textContent = count !== null ? count : '0';
-    } catch (err) { }
+    } catch (err) {
+      console.error('Erro ao carregar stats (' + t.id + '):', err.message || err);
+      // C5 — Timeout ou erro: exibir 0 em vez de deixar — preso
+      const el = document.getElementById(t.id);
+      if (el && (el.textContent === '—' || el.textContent === '')) {
+        el.textContent = '0';
+      }
+    }
+  }
+  // Animar contadores mesmo que alguns tenham virado 0
+  if (typeof window._retriggerStatCounters === 'function') {
+    setTimeout(window._retriggerStatCounters, 150);
   }
 }
 
@@ -2551,6 +2906,10 @@ function updateLandingStatsFromLocal() {
   setEl('stat-businesses', businesses);
   setEl('stat-jobs', jobs + jobPubs);
   setEl('stat-classifieds', classifieds + clPubs);
+  // Re-trigger counter animation after values are populated
+  if (typeof window._retriggerStatCounters === 'function') {
+    setTimeout(window._retriggerStatCounters, 150);
+  }
 }
 
 // Chamada global — atualiza contadores sempre que algo muda
@@ -2560,6 +2919,292 @@ function updateLandingStats() {
   } else {
     loadLandingStats();
   }
+}
+
+// =============================================
+// ÁREA PÚBLICA — Explorar sem login
+// =============================================
+let _pendingPublish = false;
+let _currentExploreTab = 'all';
+
+function showPublicArea(section) {
+  _currentExploreTab = section || 'all';
+  showPage('explore');
+  updateExploreAccountBtn();
+  // Sincronizar tabs
+  const tabs = ['all', 'services', 'businesses', 'jobs', 'classifieds'];
+  document.querySelectorAll('.explore-tab').forEach((t, i) => {
+    t.classList.toggle('active', tabs[i] === _currentExploreTab);
+  });
+  loadExploreData(_currentExploreTab);
+}
+
+function updateExploreAccountBtn() {
+  const btn = document.getElementById('explore-account-btn');
+  if (!btn) return;
+  if (state.user) {
+    const name = state.profile?.full_name || state.user?.user_metadata?.full_name || 'Minha conta';
+    btn.textContent = '👤 ' + name.split(' ')[0];
+    btn.onclick = () => {
+      const type = state.profile?.profile_type;
+      if (type === 'provider') enterPanel('provider');
+      else if (type === 'business') enterPanel('business');
+      else if (type === 'user') enterPanel('user');
+      else showPage('profile-selection');
+    };
+  } else {
+    btn.textContent = 'Acessar conta';
+    btn.onclick = () => showPage('login');
+  }
+}
+
+function setExploreTab(tab, el) {
+  _currentExploreTab = tab;
+  document.querySelectorAll('.explore-tab').forEach(t => t.classList.remove('active'));
+  if (el) el.classList.add('active');
+  loadExploreData(tab);
+}
+
+function syncExploreTab(idx) {
+  document.querySelectorAll('.explore-tab').forEach((t, i) => t.classList.toggle('active', i === idx));
+}
+
+async function loadExploreData(section) {
+  const cont = document.getElementById('explore-content');
+  if (!cont) return;
+  cont.innerHTML = '<div style="text-align:center;padding:80px 0"><div class="loading-spinner" style="margin:0 auto"></div><p style="margin-top:12px;color:var(--text2);font-size:14px">Carregando...</p></div>';
+  try {
+    if (section === 'all' || !section) await loadExploreAll();
+    else await loadExploreSectionData(section);
+  } catch (e) {
+    console.error('loadExploreData error:', e);
+    const c = document.getElementById('explore-content');
+    if (c) c.innerHTML = '<div style="text-align:center;padding:60px;color:var(--text2)">Erro ao carregar. Tente novamente.</div>';
+  }
+}
+
+async function loadExploreAll() {
+  let services = [], businesses = [], jobs = [], classifieds = [];
+
+  if (useLocalMode || !db) {
+    const profiles = localDB.getAllProfiles();
+    services = profiles.filter(p => p.profile_type === 'provider');
+    businesses = profiles.filter(p => p.profile_type === 'business');
+    jobs = localDB.getJobs();
+    classifieds = localDB.getClassifieds();
+  } else {
+    try {
+      // C6 — Timeout de 7s no Promise.all: se qualquer query travar, cai no catch
+      const [provRes, bizRes, jobsRes, clRes] = await withTimeout(
+        Promise.all([
+          db.from('profiles').select('*').eq('profile_type', 'provider').order('created_at', { ascending: false }).limit(8),
+          db.from('profiles').select('*').eq('profile_type', 'business').order('created_at', { ascending: false }).limit(8),
+          db.from('jobs').select('*, profiles(full_name, phone)').order('created_at', { ascending: false }).limit(6),
+          db.from('classifieds').select('*, profiles(full_name, phone)').order('created_at', { ascending: false }).limit(6),
+        ]),
+        7000
+      );
+      services = provRes.data || [];
+      businesses = bizRes.data || [];
+      jobs = jobsRes.data || [];
+      classifieds = clRes.data || [];
+    } catch (e) {
+      console.error('loadExploreAll: timeout ou erro:', e.message || e);
+      // C6 — Fallback local após timeout
+      const profiles = localDB.getAllProfiles();
+      services = profiles.filter(p => p.profile_type === 'provider');
+      businesses = profiles.filter(p => p.profile_type === 'business');
+      jobs = localDB.getJobs();
+      classifieds = localDB.getClassifieds();
+      if (e.message === 'timeout') {
+        showToast('Conexão lenta — exibindo dados locais.');
+      }
+    }
+  }
+
+  let html = '';
+  if (services.length > 0) {
+    html += `<div class="explore-section-header"><h2>🔧 Serviços</h2><button class="btn btn-ghost btn-sm" onclick="setExploreTab('services',null);syncExploreTab(1)">Ver todos →</button></div><div class="explore-grid">${services.slice(0, 6).map(p => exploreServiceCard(p)).join('')}</div>`;
+  }
+  if (businesses.length > 0) {
+    html += `<div class="explore-section-header"><h2>🏢 Empresas</h2><button class="btn btn-ghost btn-sm" onclick="setExploreTab('businesses',null);syncExploreTab(2)">Ver todas →</button></div><div class="explore-grid">${businesses.slice(0, 6).map(p => exploreBusinessCard(p)).join('')}</div>`;
+  }
+  if (jobs.length > 0) {
+    html += `<div class="explore-section-header"><h2>💼 Vagas</h2><button class="btn btn-ghost btn-sm" onclick="setExploreTab('jobs',null);syncExploreTab(3)">Ver todas →</button></div><div class="explore-list">${jobs.slice(0, 4).map(j => exploreJobCard(j)).join('')}</div>`;
+  }
+  if (classifieds.length > 0) {
+    html += `<div class="explore-section-header"><h2>🏷️ Classificados</h2><button class="btn btn-ghost btn-sm" onclick="setExploreTab('classifieds',null);syncExploreTab(4)">Ver todos →</button></div><div class="explore-grid">${classifieds.slice(0, 6).map(c => exploreClassifiedCard(c)).join('')}</div>`;
+  }
+
+  if (!html) {
+    // C6 — Estado vazio com botões de ação, nunca deixar spinner
+    html = `<div class="explore-empty"><div style="font-size:72px;margin-bottom:16px">🌿</div><h3>A plataforma está crescendo!</h3><p>Em breve haverá muito conteúdo aqui. Seja o primeiro a divulgar!</p><div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:24px"><button class="btn btn-primary" onclick="requireLoginForPublish()">+ Divulgar grátis</button><button class="btn btn-outline" onclick="loadExploreData(_currentExploreTab)">Tentar novamente</button></div></div>`;
+  }
+
+  const c = document.getElementById('explore-content');
+  if (c) c.innerHTML = html;
+}
+
+async function loadExploreSectionData(section) {
+  let data = [];
+  const meta = {
+    services: { type: 'provider', label: 'Serviços', icon: '🔧' },
+    businesses: { type: 'business', label: 'Empresas', icon: '🏢' },
+    jobs: { label: 'Vagas', icon: '💼' },
+    classifieds: { label: 'Classificados', icon: '🏷️' }
+  };
+  const m = meta[section];
+
+  if (useLocalMode || !db) {
+    if (section === 'services') data = localDB.getAllProfiles().filter(p => p.profile_type === 'provider');
+    else if (section === 'businesses') data = localDB.getAllProfiles().filter(p => p.profile_type === 'business');
+    else if (section === 'jobs') data = localDB.getJobs();
+    else if (section === 'classifieds') data = localDB.getClassifieds();
+  } else {
+    try {
+      if (section === 'services' || section === 'businesses') {
+        // C6 — Timeout de 7s por query individual de seção
+        const r = await withTimeout(
+          db.from('profiles').select('*').eq('profile_type', m.type).order('created_at', { ascending: false }),
+          7000
+        );
+        data = r.data || [];
+      } else {
+        const tbl = section === 'jobs' ? 'jobs' : 'classifieds';
+        // C6 — Timeout de 7s
+        const r = await withTimeout(
+          db.from(tbl).select('*, profiles(full_name, phone)').order('created_at', { ascending: false }),
+          7000
+        );
+        data = r.data || [];
+      }
+    } catch (e) {
+      console.error('loadExploreSectionData timeout/erro (' + section + '):', e.message || e);
+      // C6 — Fallback local
+      if (section === 'services') data = localDB.getAllProfiles().filter(p => p.profile_type === 'provider');
+      else if (section === 'businesses') data = localDB.getAllProfiles().filter(p => p.profile_type === 'business');
+      else if (section === 'jobs') data = localDB.getJobs();
+      else if (section === 'classifieds') data = localDB.getClassifieds();
+      if (e.message === 'timeout') showToast('Conexão lenta — exibindo dados locais.');
+    }
+  }
+
+  const c = document.getElementById('explore-content');
+  if (!c) return;
+
+  if (!data || data.length === 0) {
+    // C6 — Estado vazio nunca deixa spinner; inclui botões de ação
+    c.innerHTML = `<div class="explore-empty"><div style="font-size:72px;margin-bottom:16px">${m ? m.icon : '🔍'}</div><h3>Nenhum(a) ${m ? m.label : ''} ainda</h3><p>Seja o primeiro a publicar nessa categoria!</p><div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:24px"><button class="btn btn-primary" onclick="requireLoginForPublish()">+ Publicar grátis</button><button class="btn btn-outline" onclick="loadExploreData('${section}')">Tentar novamente</button></div></div>`;
+    return;
+  }
+
+  let html = '';
+  if (section === 'services') html = `<div class="explore-grid">${data.map(p => exploreServiceCard(p)).join('')}</div>`;
+  else if (section === 'businesses') html = `<div class="explore-grid">${data.map(p => exploreBusinessCard(p)).join('')}</div>`;
+  else if (section === 'jobs') html = `<div class="explore-list">${data.map(j => exploreJobCard(j)).join('')}</div>`;
+  else if (section === 'classifieds') html = `<div class="explore-grid">${data.map(cl => exploreClassifiedCard(cl)).join('')}</div>`;
+
+  c.innerHTML = html;
+}
+
+function exploreServiceCard(p) {
+  const name = escHtml(p.full_name || 'Prestador');
+  const service = escHtml(p.service_title || (p.bio || '').substring(0, 60) || 'Serviço');
+  const city = p.city ? `<div class="ecard-city">📍 ${escHtml(p.city)}</div>` : '';
+  const avatar = p.avatar_url ? `<img src="${p.avatar_url}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%"/>` : `<span>${name.charAt(0)}</span>`;
+  const phone = p.phone || '';
+  const wpp = phone ? `<a href="https://wa.me/55${phone.replace(/\D/g, '')}" target="_blank" rel="noopener" class="ecard-wpp">📱 WhatsApp</a>` : '';
+  return `<div class="explore-card"><div class="ecard-avatar ecard-avatar--provider">${avatar}</div><div class="ecard-body"><div class="ecard-name">${name}</div><div class="ecard-tag">🔧 ${service}</div>${city}</div>${wpp}</div>`;
+}
+
+function exploreBusinessCard(p) {
+  const name = escHtml(p.full_name || 'Empresa');
+  const sched = p.schedule ? `<div class="ecard-tag">🕐 ${escHtml(p.schedule)}</div>` : '';
+  const city = p.city ? `<div class="ecard-city">📍 ${escHtml(p.city)}</div>` : '';
+  const avatar = p.avatar_url ? `<img src="${p.avatar_url}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%"/>` : `<span>${name.charAt(0)}</span>`;
+  const phone = p.phone || '';
+  const wpp = phone ? `<a href="https://wa.me/55${phone.replace(/\D/g, '')}" target="_blank" rel="noopener" class="ecard-wpp">📱 WhatsApp</a>` : '';
+  return `<div class="explore-card"><div class="ecard-avatar ecard-avatar--business">${avatar}</div><div class="ecard-body"><div class="ecard-name">${name}</div>${sched}${city}</div>${wpp}</div>`;
+}
+
+function exploreJobCard(j) {
+  const p = j.profiles || {};
+  const title = escHtml(j.title || 'Vaga');
+  const company = escHtml(j.company_name || p.full_name || '');
+  const city = j.city ? ` · 📍 ${escHtml(j.city)}` : '';
+  const type = j.job_type ? `<span class="ecard-tag">${escHtml(j.job_type)}</span>` : '';
+  const salary = j.salary ? `<span class="ecard-salary">${escHtml(j.salary)}</span>` : '';
+  const phone = j.contact_phone || p.phone || '';
+  const wpp = phone ? `<a href="https://wa.me/55${phone.replace(/\D/g, '')}" target="_blank" rel="noopener" class="ecard-wpp">Candidatar</a>` : '';
+  return `<div class="explore-job-card"><div class="ejob-icon">💼</div><div style="flex:1;min-width:0"><div class="ecard-name">${title}</div><div class="ecard-city">${company}${city}</div><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">${type}${salary}</div></div>${wpp}</div>`;
+}
+
+function exploreClassifiedCard(cl) {
+  const p = cl.profiles || {};
+  const title = escHtml(cl.title || 'Anúncio');
+  const price = cl.price ? `<div class="ecard-salary">${escHtml(cl.price)}</div>` : '';
+  const city = cl.city ? `<div class="ecard-city">📍 ${escHtml(cl.city)}</div>` : '';
+  const phone = cl.contact_phone || p.phone || '';
+  const wpp = phone ? `<a href="https://wa.me/55${phone.replace(/\D/g, '')}" target="_blank" rel="noopener" class="ecard-wpp">Contato</a>` : '';
+  return `<div class="explore-card"><div class="ecard-avatar ecard-avatar--classified">🏷️</div><div class="ecard-body"><div class="ecard-name">${title}</div>${price}${city}</div>${wpp}</div>`;
+}
+
+function filterExplore(val) {
+  document.querySelectorAll('.explore-card, .explore-job-card').forEach(card => {
+    card.style.display = !val || card.textContent.toLowerCase().includes(val.toLowerCase()) ? '' : 'none';
+  });
+}
+
+// =============================================
+// REQUIRE LOGIN FOR PUBLISH
+// =============================================
+function requireLoginForPublish() {
+  if (state.user) {
+    const type = state.profile?.profile_type;
+    if (type === 'provider') { enterPanel('provider', 'publications'); return; }
+    if (type === 'business') { enterPanel('business', 'publications'); return; }
+    // Logado mas sem tipo de publicação → escolher
+    _pendingPublish = true;
+    showPage('profile-selection');
+    return;
+  }
+  // Não logado → mostrar modal
+  _pendingPublish = true;
+  showLoginRequiredModal();
+}
+
+function showLoginRequiredModal() {
+  openModal(
+    'Acesse para publicar',
+    `<div style="text-align:center;padding:8px 0 4px">
+      <div style="font-size:52px;margin-bottom:16px">🔐</div>
+      <p style="color:var(--text2);line-height:1.7;margin-bottom:24px">Para publicar serviços, vagas ou anúncios você precisa entrar ou criar uma conta gratuita.</p>
+      <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap">
+        <button class="btn btn-primary" onclick="closeModal();showPage('login')">Entrar na conta</button>
+        <button class="btn btn-outline" onclick="closeModal();showPage('signup')">Criar conta grátis</button>
+      </div>
+    </div>`,
+    ''
+  );
+}
+
+async function skipToExplore() {
+  // Cria perfil tipo 'user' silenciosamente para não pedir de novo
+  if (state.user && (!state.profile || !state.profile.profile_type)) {
+    const profileData = {
+      id: state.user.id,
+      email: state.user.email || '',
+      full_name: state.user.user_metadata?.full_name || state.user.email?.split('@')[0] || 'Usuário',
+      profile_type: 'user',
+      updated_at: new Date().toISOString(),
+      created_at: new Date().toISOString(),
+    };
+    if (useLocalMode) { localDB.saveProfile(profileData); }
+    else if (db) { try { await db.from('profiles').upsert(profileData); } catch (e) { } }
+    state.profile = profileData;
+  }
+  _pendingPublish = false;
+  showPublicArea();
 }
 
 // =============================================
@@ -2611,8 +3256,19 @@ function showToast(msg) {
 // Show landing ONLY if initAuth hasn't already handled navigation
 if (!_authNavigationDone) {
   showPage('landing');
+  // Ensure the loading overlay is removed when landing shows synchronously
+  hideAppLoading();
 }
-loadLandingStats();
+
+// Carregar stats após DOM ready para garantir que os elementos existam
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', () => {
+    loadLandingStats();
+  });
+} else {
+  loadLandingStats();
+}
+var loadPublicStats = loadLandingStats; // alias
 
 // Theme icon
 document.addEventListener('DOMContentLoaded', () => {
@@ -2620,13 +3276,18 @@ document.addEventListener('DOMContentLoaded', () => {
   if (btn && state.theme === 'dark') btn.textContent = '☀️';
 });
 
-// Fallback: hide loader — but NOT if OAuth callback is being processed
+// Fallback: hide loader e mostrar landing se nada foi navegado ainda
 setTimeout(() => {
   if (isOAuthCallback()) return; // Don't hide loader during OAuth processing
   const loader = document.getElementById('app-loading');
   if (loader && !loader.classList.contains('hidden')) {
     loader.classList.add('hidden');
     setTimeout(() => loader.style.display = 'none', 500);
+  }
+  // Se ainda não navegou para nenhuma página, mostrar landing
+  if (!_authNavigationDone) {
+    _authNavigationDone = true;
+    showPage('landing');
   }
 }, 3000);
 
@@ -2685,35 +3346,55 @@ setTimeout(() => {
   }
 
   // 3. Stat counter animation
+  function animateCounter(el) {
+    if (el.dataset.animated === 'true') return;
+    const text = el.textContent.trim();
+    // Skip if still showing placeholder
+    if (text === '—' || text === '') return;
+    const num = parseInt(text.replace(/[^0-9]/g, ''));
+    if (isNaN(num)) return;
+    el.dataset.animated = 'true';
+    if (num > 0) {
+      const suffix = text.replace(/[0-9]/g, '').trim();
+      const duration = 1200;
+      const start = performance.now();
+      const easeOut = t => 1 - Math.pow(1 - t, 3);
+      function tick(now) {
+        const progress = Math.min((now - start) / duration, 1);
+        const current = Math.round(easeOut(progress) * num);
+        el.textContent = current + (suffix ? '' + suffix : '');
+        if (progress < 1) requestAnimationFrame(tick);
+        else el.classList.add('counting');
+      }
+      el.textContent = '0';
+      requestAnimationFrame(tick);
+    }
+  }
+
   function animateStatCounters() {
     const statEls = document.querySelectorAll('.stat-val');
+    // Threshold baixo para funcionar em qualquer tamanho de tela
     const observer = new IntersectionObserver((entries) => {
       entries.forEach(entry => {
-        if (entry.isIntersecting && !entry.target.dataset.animated) {
-          entry.target.dataset.animated = 'true';
-          const text = entry.target.textContent;
-          const num = parseInt(text.replace(/[^0-9]/g, ''));
-          if (!isNaN(num) && num > 0) {
-            const suffix = text.replace(/[0-9]/g, '').trim();
-            const duration = 1200;
-            const start = performance.now();
-            const easeOut = t => 1 - Math.pow(1 - t, 3);
-            function tick(now) {
-              const progress = Math.min((now - start) / duration, 1);
-              const current = Math.round(easeOut(progress) * num);
-              entry.target.textContent = current + (suffix ? '' + suffix : '');
-              if (progress < 1) requestAnimationFrame(tick);
-              else entry.target.classList.add('counting');
-            }
-            entry.target.textContent = '0';
-            requestAnimationFrame(tick);
+        if (entry.isIntersecting) {
+          animateCounter(entry.target);
+          if (entry.target.dataset.animated === 'true') {
+            observer.unobserve(entry.target);
           }
-          observer.unobserve(entry.target);
         }
       });
-    }, { threshold: 0.5 });
+    }, { threshold: 0.1, rootMargin: '0px 0px 50px 0px' });
     statEls.forEach(el => observer.observe(el));
   }
+
+  // Called by loadLandingStats after values are set to re-trigger counters
+  window._retriggerStatCounters = function() {
+    document.querySelectorAll('.stat-val').forEach(el => {
+      delete el.dataset.animated;
+      // Animar diretamente — no mobile o IntersectionObserver pode não disparar
+      animateCounter(el);
+    });
+  };
 
   // 4. Parallax effect on hero blobs (subtle)
   function setupParallax() {

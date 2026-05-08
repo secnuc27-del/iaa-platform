@@ -3,7 +3,7 @@
 
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>IAA - Interligação Alto Acre</title>
 
   <!-- SEO & Google Search Console Verification -->
@@ -27,7 +27,10 @@
      ============================================= -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
-  <link rel="stylesheet" href="style.css?v=10" />
+  <link rel="stylesheet" href="style.css?v=13" />
+  <link rel="stylesheet" href="css/panel-usuario.css?v=1" />
+  <link rel="stylesheet" href="css/panel-prestador.css?v=1" />
+  <link rel="stylesheet" href="css/panel-empresa.css?v=1" />
 </head>
 
 <body>
@@ -48,8 +51,8 @@
         <span class="logo-text">Interligação Alto Acre</span>
       </div>
       <div class="nav-btns">
-        <button class="btn btn-ghost" onclick="showPage('login')">Entrar</button>
-        <button class="btn btn-primary" onclick="showPage('signup')">Cadastrar</button>
+        <button class="btn btn-ghost" onclick="showPage('login')">Acessar conta</button>
+        <button class="btn btn-primary" onclick="requireLoginForPublish()">+ Publicar</button>
       </div>
     </nav>
     <div class="hero">
@@ -64,8 +67,8 @@
       </div>
       <p class="hero-reveal">Serviços, empresas, vagas de emprego e classificados da sua região, num só lugar.</p>
       <div class="hero-btns hero-reveal">
-        <button class="btn btn-primary btn-lg" onclick="showPage('signup')">Comece grátis →</button>
-        <button class="btn btn-outline btn-lg" onclick="showPage('login')">Já tenho conta</button>
+        <button class="btn btn-primary btn-lg" onclick="showPublicArea()">Explorar agora →</button>
+        <button class="btn btn-outline btn-lg" onclick="requireLoginForPublish()">Quero divulgar</button>
       </div>
       <div class="stats-row hero-reveal">
         <div class="stat-card">
@@ -93,37 +96,37 @@
           <p>Uma plataforma completa para conectar pessoas e negócios</p>
         </div>
         <div class="features-grid">
-          <div class="feat-card" onclick="showPage('signup')">
+          <div class="feat-card" onclick="showPublicArea('services')">
             <div class="feat-icon" style="background:rgba(37,99,235,.1)">🔧</div>
             <h3>Serviços</h3>
             <p>Eletricistas, encanadores, cabeleireiros e muito mais. Encontre o profissional certo.</p>
             <div class="feat-arrow">Explorar →</div>
           </div>
-          <div class="feat-card" onclick="showPage('signup')">
+          <div class="feat-card" onclick="showPublicArea('businesses')">
             <div class="feat-icon" style="background:rgba(20,184,166,.1)">🏢</div>
             <h3>Empresas</h3>
             <p>Comércios, restaurantes, farmácias e academias da sua cidade.</p>
             <div class="feat-arrow">Explorar →</div>
           </div>
-          <div class="feat-card" onclick="showPage('signup')">
+          <div class="feat-card" onclick="showPublicArea('jobs')">
             <div class="feat-icon" style="background:rgba(245,158,11,.1)">💼</div>
             <h3>Vagas</h3>
             <p>Oportunidades de emprego publicadas por empresas locais. CLT, PJ, autônomo.</p>
             <div class="feat-arrow">Ver vagas →</div>
           </div>
-          <div class="feat-card" onclick="showPage('signup')">
+          <div class="feat-card" onclick="showPublicArea('classifieds')">
             <div class="feat-icon" style="background:rgba(34,197,94,.1)">🏷️</div>
             <h3>Classificados</h3>
             <p>Compre e venda produtos usados. Imóveis, veículos, eletrônicos e mais.</p>
             <div class="feat-arrow">Ver anúncios →</div>
           </div>
-          <div class="feat-card" onclick="showPage('signup')">
+          <div class="feat-card" onclick="showPublicArea()">
             <div class="feat-icon" style="background:rgba(239,68,68,.1)">▶️</div>
             <h3>Vídeos</h3>
             <p>Conteúdo em vídeo de negócios e profissionais da região.</p>
             <div class="feat-arrow">Assistir →</div>
           </div>
-          <div class="feat-card" onclick="showPage('signup')">
+          <div class="feat-card" onclick="showPublicArea()">
             <div class="feat-icon" style="background:rgba(99,102,241,.1)">📱</div>
             <h3>WhatsApp direto</h3>
             <p>Entre em contato com qualquer prestador ou empresa pelo WhatsApp com um clique.</p>
@@ -141,30 +144,33 @@
         <div class="steps-grid">
           <div class="step">
             <div class="step-num">PASSO 01</div>
-            <div class="step-icon-wrap gradient-brand">📝</div>
-            <h3>Crie sua conta</h3>
-            <p>Cadastre-se gratuitamente em menos de 2 minutos.</p>
+            <div class="step-icon-wrap gradient-brand">🔍</div>
+            <h3>Explore sem cadastro</h3>
+            <p>Acesse serviços, vagas e anúncios da região sem precisar criar uma conta.</p>
           </div>
           <div class="step">
             <div class="step-num">PASSO 02</div>
-            <div class="step-icon-wrap gradient-brand">👤</div>
-            <h3>Monte seu perfil</h3>
-            <p>Usuário comum, prestador de serviço ou empresa.</p>
+            <div class="step-icon-wrap gradient-brand">📱</div>
+            <h3>Entre em contato</h3>
+            <p>Fale diretamente pelo WhatsApp com prestadores e empresas da região.</p>
           </div>
           <div class="step">
             <div class="step-num">PASSO 03</div>
-            <div class="step-icon-wrap gradient-brand">🔗</div>
-            <h3>Conecte-se</h3>
-            <p>Encontre serviços ou divulgue seu negócio para toda a região.</p>
+            <div class="step-icon-wrap gradient-brand">📢</div>
+            <h3>Divulgue grátis</h3>
+            <p>Quer aparecer na plataforma? Crie uma conta e publique seu serviço ou negócio.</p>
           </div>
         </div>
       </div>
     </div>
     <div class="cta-section">
       <div class="cta-box gradient-brand">
-        <h2>Faça parte do Alto Acre conectado</h2>
-        <p>Junte-se à comunidade de Epitaciolândia e Brasiléia</p>
-        <button class="btn btn-white btn-lg" onclick="showPage('signup')">Criar conta gratuita</button>
+        <h2>Entre, explore e encontre o que precisa</h2>
+        <p>Para divulgar, crie sua conta grátis. Para buscar, explore agora mesmo.</p>
+        <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap">
+          <button class="btn btn-white btn-lg" onclick="showPublicArea()">Explorar agora →</button>
+          <button class="btn btn-outline btn-lg" style="border-color:rgba(255,255,255,.5);color:#fff" onclick="requireLoginForPublish()">Quero divulgar</button>
+        </div>
       </div>
     </div>
     <footer class="site-footer">
@@ -406,8 +412,7 @@
           <button class="btn btn-primary btn-full" id="login-btn" onclick="doLogin()">Entrar</button>
           <div class="auth-footer">Não tem conta? <a href="#" onclick="showPage('signup');return false">Cadastrar
               grátis</a></div>
-          <div class="auth-footer" style="margin-top:8px"><a href="#" onclick="showPage('landing');return false">←
-              Voltar</a></div>
+          <div class="auth-footer" style="margin-top:8px"><a href="#" onclick="showPage('landing');return false">← Início</a> · <a href="#" onclick="showPublicArea();return false">Explorar sem conta</a></div>
         </div>
       </div>
     </div>
@@ -480,8 +485,7 @@
           </div>
           <button class="btn btn-primary btn-full" id="signup-btn" onclick="doSignup()">Criar conta</button>
           <div class="auth-footer">Já tem conta? <a href="#" onclick="showPage('login');return false">Entrar</a></div>
-          <div class="auth-footer" style="margin-top:8px"><a href="#" onclick="showPage('landing');return false">←
-              Voltar ao início</a></div>
+          <div class="auth-footer" style="margin-top:8px"><a href="#" onclick="showPage('landing');return false">← Início</a> · <a href="#" onclick="showPublicArea();return false">Explorar sem conta</a></div>
         </div>
       </div>
     </div>
@@ -531,107 +535,241 @@
      ============================================ -->
   <div id="profile-selection" class="page"
     style="min-height:100vh;display:none;align-items:center;justify-content:center;padding:32px 16px;background:var(--bg)">
-    <div style="width:100%;max-width:880px">
+    <div style="width:100%;max-width:680px">
       <div style="text-align:center;margin-bottom:40px">
         <img src="logo-iaa.png" alt="IAA" class="logo-img"
           style="height:48px;width:auto;margin:0 auto 16px;display:block">
-        <h1 style="font-size:clamp(26px,4vw,36px);font-weight:800;margin-bottom:8px">Escolha seu perfil</h1>
-        <p style="color:var(--text2);font-size:16px">Como você quer usar a plataforma?</p>
+        <h1 style="font-size:clamp(26px,4vw,36px);font-weight:800;margin-bottom:8px">Como você quer divulgar?</h1>
+        <p style="color:var(--text2);font-size:16px">Escolha como vai aparecer na plataforma IAA</p>
       </div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:20px">
-        <div class="feat-card" onclick="selectProfile('user')" style="border:2px solid transparent;padding:28px">
-          <div class="feat-icon"
-            style="background:rgba(37,99,235,.1);width:56px;height:56px;border-radius:16px;font-size:26px">👤</div>
-          <h3 style="font-size:19px;margin:12px 0 6px">Usuário Comum</h3>
-          <p style="margin-bottom:16px">Explore serviços, busque vagas, acompanhe empresas e avalie.</p>
-          <div class="feat-arrow" style="opacity:1">Selecionar →</div>
-        </div>
         <div class="feat-card" onclick="selectProfile('provider')" style="border:2px solid transparent;padding:28px">
           <div class="feat-icon"
             style="background:rgba(20,184,166,.1);width:56px;height:56px;border-radius:16px;font-size:26px">🔧</div>
-          <h3 style="font-size:19px;margin:12px 0 6px">Prestador de Serviço</h3>
-          <p style="margin-bottom:16px">Divulgue seus serviços, publique fotos e vídeos, receba avaliações.</p>
+          <h3 style="font-size:19px;margin:12px 0 6px">Sou prestador de serviço</h3>
+          <p style="margin-bottom:16px">Quero divulgar meus serviços profissionais, fotos e receber contatos.</p>
           <div class="feat-arrow" style="opacity:1;color:var(--accent)">Selecionar →</div>
         </div>
         <div class="feat-card" onclick="selectProfile('business')" style="border:2px solid transparent;padding:28px">
           <div class="feat-icon"
             style="background:rgba(245,158,11,.1);width:56px;height:56px;border-radius:16px;font-size:26px">🏢</div>
-          <h3 style="font-size:19px;margin:12px 0 6px">Empresa / Comércio</h3>
-          <p style="margin-bottom:16px">Vitrine digital completa. Publique promoções e anuncie vagas.</p>
+          <h3 style="font-size:19px;margin:12px 0 6px">Sou empresa ou comércio</h3>
+          <p style="margin-bottom:16px">Quero divulgar meu negócio, produtos, serviços ou vagas.</p>
           <div class="feat-arrow" style="opacity:1;color:var(--warning)">Selecionar →</div>
         </div>
+      </div>
+      <div style="text-align:center;margin-top:28px">
+        <button class="btn btn-ghost" style="color:var(--text2);font-size:14px" onclick="skipToExplore()">
+          Só quero explorar a plataforma →
+        </button>
       </div>
     </div>
   </div>
 
   <!-- ============================================
-     DASHBOARD
+     COMPLETE PROFILE — USER
      ============================================ -->
-  <div id="dashboard" class="page">
-    <div class="dash-wrap">
-      <nav class="sidebar" id="sidebar">
-        <div class="sidebar-logo">
-          <img src="logo-iaa.png" alt="IAA" class="logo-img" style="height:34px;width:auto;flex-shrink:0">
-          <span class="sidebar-logo-text">Interligação Alto Acre</span>
-        </div>
-        <div class="sidebar-nav">
-          <div class="nav-group">
-            <div class="nav-group-label">Principal</div>
-            <div class="nav-item active" onclick="setActive(this);showDash('feed')"><span
-                class="nav-item-icon">🏠</span>Início</div>
-            <div class="nav-item" onclick="setActive(this);showDash('services')"><span
-                class="nav-item-icon">🔧</span>Serviços</div>
-            <div class="nav-item" onclick="setActive(this);showDash('businesses')"><span
-                class="nav-item-icon">🏢</span>Empresas</div>
-            <div class="nav-item" onclick="setActive(this);showDash('jobs')"><span class="nav-item-icon">💼</span>Vagas
-            </div>
-            <div class="nav-item" onclick="setActive(this);showDash('classifieds')"><span
-                class="nav-item-icon">🏷️</span>Classificados</div>
-            <div class="nav-item" onclick="setActive(this);showDash('videos')"><span
-                class="nav-item-icon">▶️</span>Vídeos</div>
-            <div class="nav-item" onclick="setActive(this);showDash('photos')"><span
-                class="nav-item-icon">📷</span>Fotos</div>
-          </div>
-          <div class="nav-group">
-            <div class="nav-group-label">Minha conta</div>
-            <div class="nav-item" onclick="setActive(this);showDash('profile')"><span class="nav-item-icon">👤</span>Meu
-              Perfil</div>
-            <div class="nav-item" onclick="setActive(this);showDash('publications')"><span
-                class="nav-item-icon">📄</span>Publicações</div>
-            <div class="nav-item" onclick="setActive(this);showDash('performance')"><span
-                class="nav-item-icon">📈</span>Desempenho</div>
-            <div class="nav-item" id="notif-nav" onclick="setActive(this);showDash('notifications')"><span
-                class="nav-item-icon">🔔</span>Notificações</div>
-            <div class="nav-item" onclick="setActive(this);showDash('settings')"><span
-                class="nav-item-icon">⚙️</span>Configurações</div>
-            <div class="nav-item" onclick="setActive(this);showDash('help')"><span class="nav-item-icon">❓</span>Ajuda
-            </div>
-          </div>
-        </div>
-        <div class="sidebar-footer">
-          <div class="nav-item" onclick="doLogout()" style="color:rgba(239,68,68,.7)"><span
-              class="nav-item-icon">🚪</span>Sair</div>
-        </div>
-      </nav>
-      <div class="dash-main">
-        <div class="topbar">
-          <button class="icon-btn" onclick="toggleSidebar()" style="font-size:20px">☰</button>
-          <div class="topbar-search">
-            <span class="topbar-search-icon">🔍</span>
-            <input placeholder="Buscar serviços, empresas, vagas..." oninput="handleSearch(this.value)" />
-          </div>
-          <div class="topbar-right">
-            <button class="icon-btn" onclick="toggleTheme()">🌙</button>
-            <button class="icon-btn"
-              onclick="setActive(document.querySelectorAll('.nav-item')[10]);showDash('notifications')">
-              🔔<span class="notif-dot" id="notif-badge" style="display:none"></span>
-            </button>
-            <div class="avatar" onclick="setActive(document.querySelectorAll('.nav-item')[7]);showDash('profile')"
-              id="topbar-avatar">U</div>
-          </div>
-        </div>
-        <div class="dash-content" id="dash-content"></div>
+  <div id="complete-profile-user" class="page" style="min-height:100vh;display:none;align-items:center;justify-content:center;padding:32px 16px;background:var(--bg)">
+    <div style="width:100%;max-width:520px">
+      <div style="text-align:center;margin-bottom:32px">
+        <img src="logo-iaa.png" alt="IAA" class="logo-img" style="height:48px;width:auto;margin:0 auto 16px;display:block">
+        <h1 style="font-size:clamp(22px,4vw,30px);font-weight:800;margin-bottom:8px">Complete seu perfil</h1>
+        <p style="color:var(--text2);font-size:15px">Conte-nos um pouco sobre você</p>
       </div>
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:28px">
+        <div class="form-group"><label class="form-label">Nome</label><div class="form-input-wrap"><span class="form-input-icon">👤</span><input id="cp-user-name" class="form-input" placeholder="Seu nome"/></div></div>
+        <div class="form-group"><label class="form-label">Cidade</label><div class="form-input-wrap"><span class="form-input-icon">📍</span><select id="cp-user-city" class="form-input"><option>Brasiléia</option><option>Epitaciolândia</option><option>Outra</option></select></div></div>
+        <div class="form-group"><label class="form-label">Interesses (separados por vírgula)</label><div class="form-input-wrap"><span class="form-input-icon">⭐</span><input id="cp-user-interests" class="form-input" placeholder="Ex: eletricista, restaurantes, vagas"/></div></div>
+        <div class="form-group"><label class="form-label">Receber alertas de vagas?</label><div style="display:flex;gap:12px;margin-top:4px"><label style="display:flex;align-items:center;gap:4px;font-size:14px;cursor:pointer"><input type="radio" name="cp-user-alerts" value="sim" checked> Sim</label><label style="display:flex;align-items:center;gap:4px;font-size:14px;cursor:pointer"><input type="radio" name="cp-user-alerts" value="nao"> Não</label></div></div>
+        <button class="btn btn-primary btn-full" style="margin-top:16px" onclick="saveCompleteProfile('user')">Continuar →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- COMPLETE PROFILE — PROVIDER -->
+  <div id="complete-profile-provider" class="page" style="min-height:100vh;display:none;align-items:center;justify-content:center;padding:32px 16px;background:var(--bg)">
+    <div style="width:100%;max-width:600px">
+      <div style="text-align:center;margin-bottom:32px">
+        <img src="logo-iaa.png" alt="IAA" class="logo-img" style="height:48px;width:auto;margin:0 auto 16px;display:block">
+        <h1 style="font-size:clamp(22px,4vw,30px);font-weight:800;margin-bottom:8px">Perfil Profissional</h1>
+        <p style="color:var(--text2);font-size:15px">Configure seu perfil de prestador</p>
+      </div>
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:28px">
+        <div class="form-group"><label class="form-label">Nome profissional *</label><div class="form-input-wrap"><span class="form-input-icon">👤</span><input id="cp-prov-name" class="form-input" placeholder="Seu nome"/></div></div>
+        <div class="form-group"><label class="form-label">Serviço principal *</label><div class="form-input-wrap"><span class="form-input-icon">🔧</span><input id="cp-prov-service" class="form-input" placeholder="Ex: Eletricista residencial"/></div></div>
+        <div class="cp-grid-2" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="form-group"><label class="form-label">Categoria</label><div class="form-input-wrap"><select id="cp-prov-category" class="form-input"><option>Construção</option><option>Beleza</option><option>Tecnologia</option><option>Saúde</option><option>Educação</option><option>Alimentação</option><option>Transporte</option><option>Limpeza</option><option>Outro</option></select></div></div>
+          <div class="form-group"><label class="form-label">Cidade *</label><div class="form-input-wrap"><select id="cp-prov-city" class="form-input"><option>Brasiléia</option><option>Epitaciolândia</option></select></div></div>
+        </div>
+        <div class="form-group"><label class="form-label">Descrição</label><div class="form-input-wrap"><textarea id="cp-prov-bio" class="form-input" rows="3" placeholder="Descreva seus serviços..." style="height:auto"></textarea></div></div>
+        <div class="cp-grid-2" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="form-group"><label class="form-label">WhatsApp *</label><div class="form-input-wrap"><span class="form-input-icon">📱</span><input id="cp-prov-phone" class="form-input" placeholder="(68) 99999-9999"/></div></div>
+          <div class="form-group"><label class="form-label">Horário</label><div class="form-input-wrap"><span class="form-input-icon">🕐</span><input id="cp-prov-schedule" class="form-input" placeholder="Seg-Sex 8h-18h"/></div></div>
+        </div>
+        <div class="cp-grid-2" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="form-group"><label class="form-label">Atende urgência?</label><div style="display:flex;gap:12px;margin-top:4px"><label style="font-size:14px;cursor:pointer"><input type="radio" name="cp-prov-urgencia" value="sim"> Sim</label><label style="font-size:14px;cursor:pointer"><input type="radio" name="cp-prov-urgencia" value="nao" checked> Não</label></div></div>
+          <div class="form-group"><label class="form-label">Atende fim de semana?</label><div style="display:flex;gap:12px;margin-top:4px"><label style="font-size:14px;cursor:pointer"><input type="radio" name="cp-prov-fds" value="sim"> Sim</label><label style="font-size:14px;cursor:pointer"><input type="radio" name="cp-prov-fds" value="nao" checked> Não</label></div></div>
+        </div>
+        <button class="btn btn-primary btn-full" style="margin-top:16px" onclick="saveCompleteProfile('provider')">Continuar →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- COMPLETE PROFILE — BUSINESS -->
+  <div id="complete-profile-business" class="page" style="min-height:100vh;display:none;align-items:center;justify-content:center;padding:32px 16px;background:var(--bg)">
+    <div style="width:100%;max-width:600px">
+      <div style="text-align:center;margin-bottom:32px">
+        <img src="logo-iaa.png" alt="IAA" class="logo-img" style="height:48px;width:auto;margin:0 auto 16px;display:block">
+        <h1 style="font-size:clamp(22px,4vw,30px);font-weight:800;margin-bottom:8px">Perfil da Empresa</h1>
+        <p style="color:var(--text2);font-size:15px">Configure a presença digital da sua empresa</p>
+      </div>
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:28px">
+        <div class="form-group"><label class="form-label">Nome da empresa *</label><div class="form-input-wrap"><span class="form-input-icon">🏢</span><input id="cp-biz-name" class="form-input" placeholder="Nome do seu negócio"/></div></div>
+        <div class="cp-grid-2" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="form-group"><label class="form-label">Categoria</label><div class="form-input-wrap"><select id="cp-biz-category" class="form-input"><option>Restaurante</option><option>Farmácia</option><option>Mercado</option><option>Loja</option><option>Academia</option><option>Salão</option><option>Auto Peças</option><option>Outro</option></select></div></div>
+          <div class="form-group"><label class="form-label">Cidade *</label><div class="form-input-wrap"><select id="cp-biz-city" class="form-input"><option>Brasiléia</option><option>Epitaciolândia</option></select></div></div>
+        </div>
+        <div class="form-group"><label class="form-label">Descrição da empresa</label><div class="form-input-wrap"><textarea id="cp-biz-bio" class="form-input" rows="3" placeholder="Descreva sua empresa..." style="height:auto"></textarea></div></div>
+        <div class="cp-grid-2" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="form-group"><label class="form-label">WhatsApp comercial *</label><div class="form-input-wrap"><span class="form-input-icon">📱</span><input id="cp-biz-phone" class="form-input" placeholder="(68) 99999-9999"/></div></div>
+          <div class="form-group"><label class="form-label">Horário de funcionamento</label><div class="form-input-wrap"><span class="form-input-icon">🕐</span><input id="cp-biz-schedule" class="form-input" placeholder="Seg-Sáb 8h-20h"/></div></div>
+        </div>
+        <div class="cp-grid-2" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="form-group"><label class="form-label">Faz entrega?</label><div style="display:flex;gap:12px;margin-top:4px"><label style="font-size:14px;cursor:pointer"><input type="radio" name="cp-biz-entrega" value="sim"> Sim</label><label style="font-size:14px;cursor:pointer"><input type="radio" name="cp-biz-entrega" value="nao" checked> Não</label></div></div>
+          <div class="form-group"><label class="form-label">CNPJ (opcional)</label><div class="form-input-wrap"><span class="form-input-icon">📄</span><input id="cp-biz-cnpj" class="form-input" placeholder="Opcional"/></div></div>
+        </div>
+        <button class="btn btn-primary btn-full" style="margin-top:16px" onclick="saveCompleteProfile('business')">Continuar →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================
+     WELCOME SCREENS
+     ============================================ -->
+  <div id="welcome-user" class="page" style="min-height:100vh;display:none;align-items:center;justify-content:center;padding:32px 16px;background:var(--bg)">
+    <div style="width:100%;max-width:520px;text-align:center">
+      <div style="font-size:72px;margin-bottom:20px">🎉</div>
+      <h1 style="font-size:clamp(24px,4vw,34px);font-weight:800;margin-bottom:12px">Seu perfil está pronto!</h1>
+      <p style="color:var(--text2);font-size:16px;line-height:1.7;margin-bottom:32px">Agora você já pode explorar serviços, empresas, vagas e descobrir novas oportunidades na região.</p>
+      <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap">
+        <button class="btn btn-primary btn-lg" onclick="enterPanel('user')">Explorar plataforma →</button>
+        <button class="btn btn-outline btn-lg" onclick="enterPanel('user','perfil')">Ver meu perfil</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="welcome-provider" class="page" style="min-height:100vh;display:none;align-items:center;justify-content:center;padding:32px 16px;background:var(--bg)">
+    <div style="width:100%;max-width:520px;text-align:center">
+      <div style="font-size:72px;margin-bottom:20px">🚀</div>
+      <h1 style="font-size:clamp(24px,4vw,34px);font-weight:800;margin-bottom:12px">Perfil profissional criado!</h1>
+      <p style="color:var(--text2);font-size:16px;line-height:1.7;margin-bottom:32px">Agora você já pode divulgar seu trabalho, publicar conteúdos e começar a receber contatos.</p>
+      <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap">
+        <button class="btn btn-primary btn-lg" onclick="enterPanel('provider')">Ir para meu painel →</button>
+        <button class="btn btn-outline btn-lg" onclick="enterPanel('provider','perfil-pro')">Completar perfil</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="welcome-business" class="page" style="min-height:100vh;display:none;align-items:center;justify-content:center;padding:32px 16px;background:var(--bg)">
+    <div style="width:100%;max-width:520px;text-align:center">
+      <div style="font-size:72px;margin-bottom:20px">🏢</div>
+      <h1 style="font-size:clamp(24px,4vw,34px);font-weight:800;margin-bottom:12px">Perfil da empresa pronto!</h1>
+      <p style="color:var(--text2);font-size:16px;line-height:1.7;margin-bottom:32px">Agora você já pode fortalecer sua presença digital, divulgar promoções, anunciar vagas e crescer dentro da plataforma.</p>
+      <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap">
+        <button class="btn btn-primary btn-lg" onclick="enterPanel('business')">Ir para painel da empresa →</button>
+        <button class="btn btn-outline btn-lg" onclick="enterPanel('business','promocoes')">Publicar promoção</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================
+     PANEL — USUARIO COMUM
+     ============================================ -->
+  <div id="panel-usuario" class="page">
+    <div class="dash-wrap">
+      <nav class="sidebar" id="sidebar-usuario"></nav>
+      <div class="dash-main">
+        <div class="topbar" id="topbar-usuario"></div>
+        <div class="dash-content" id="user-content"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================
+     PANEL — PRESTADOR
+     ============================================ -->
+  <div id="panel-prestador" class="page">
+    <div class="dash-wrap">
+      <nav class="sidebar" id="sidebar-prestador"></nav>
+      <div class="dash-main">
+        <div class="topbar" id="topbar-prestador"></div>
+        <div class="dash-content" id="prestador-content"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================
+     PANEL — EMPRESA
+     ============================================ -->
+  <div id="panel-empresa" class="page">
+    <div class="dash-wrap">
+      <nav class="sidebar" id="sidebar-empresa"></nav>
+      <div class="dash-main">
+        <div class="topbar" id="topbar-empresa"></div>
+        <div class="dash-content" id="empresa-content"></div>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ============================================
+     EXPLORE — ÁREA PÚBLICA (SEM LOGIN)
+     ============================================ -->
+  <div id="explore" class="page">
+    <!-- Navbar da área pública -->
+    <div class="explore-nav">
+      <div class="explore-nav-inner">
+        <button class="explore-back-btn" onclick="showPage('landing')">
+          <img src="logo-iaa.png" alt="IAA" style="height:28px;width:auto;vertical-align:middle"> IAA
+        </button>
+        <div class="explore-search-wrap">
+          <span class="explore-search-icon">🔍</span>
+          <input type="text" id="explore-search" class="explore-search-input"
+            placeholder="Buscar serviços, empresas, vagas..."
+            oninput="filterExplore(this.value)">
+        </div>
+        <div class="explore-nav-actions">
+          <button class="btn btn-ghost btn-sm" id="explore-account-btn" onclick="showPage('login')">Acessar conta</button>
+          <button class="btn btn-primary btn-sm" onclick="requireLoginForPublish()">+ Publicar</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tabs de categoria -->
+    <div class="explore-tabs-wrap">
+      <div class="explore-tabs" id="explore-tabs">
+        <button class="explore-tab active" onclick="setExploreTab('all', this)">🏠 Todos</button>
+        <button class="explore-tab" onclick="setExploreTab('services', this)">🔧 Serviços</button>
+        <button class="explore-tab" onclick="setExploreTab('businesses', this)">🏢 Empresas</button>
+        <button class="explore-tab" onclick="setExploreTab('jobs', this)">💼 Vagas</button>
+        <button class="explore-tab" onclick="setExploreTab('classifieds', this)">🏷️ Classificados</button>
+      </div>
+    </div>
+
+    <!-- Conteúdo dinâmico -->
+    <div class="explore-body">
+      <div id="explore-content">
+        <div style="text-align:center;padding:80px 0">
+          <div class="loading-spinner" style="margin:0 auto"></div>
+          <p style="margin-top:12px;color:var(--text2);font-size:14px">Carregando...</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Banner fixo para publicar -->
+    <div class="explore-publish-bar">
+      <p class="explore-publish-bar-text">Quer aparecer aqui e divulgar para toda a região?</p>
+      <button class="btn btn-primary btn-sm" onclick="requireLoginForPublish()">+ Divulgar grátis</button>
     </div>
   </div>
 
@@ -650,7 +788,10 @@
   <!-- Hidden file input for photo upload -->
   <input type="file" id="avatar-input" accept="image/*" style="display:none" onchange="handleAvatarUpload(this)" />
 
-  <script src="app.js?v=7"></script>
+  <script src="app.js?v=10"></script>
+  <script src="css/panels/panel-usuario.js?v=3"></script>
+  <script src="css/panels/panel-prestador.js?v=3"></script>
+  <script src="css/panels/panel-empresa.js?v=3"></script>
 </body>
 
 </html>
