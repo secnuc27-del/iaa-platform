@@ -2031,23 +2031,28 @@ function toggleSidebarPanel(sidebarId) {
   if (window.innerWidth <= 768) {
     const isOpen = s.classList.toggle('mobile-open');
     // Gerenciar backdrop
-    let backdrop = document.getElementById('sidebar-mobile-backdrop');
+    let backdrop = s.parentElement.querySelector('.sidebar-mobile-backdrop');
     if (!backdrop) {
       backdrop = document.createElement('div');
-      backdrop.id = 'sidebar-mobile-backdrop';
       backdrop.className = 'sidebar-mobile-backdrop';
       backdrop.onclick = () => {
         s.classList.remove('mobile-open');
         backdrop.classList.remove('visible');
         document.body.style.overflow = '';
       };
-      document.body.appendChild(backdrop);
+      s.parentElement.appendChild(backdrop);
     }
     backdrop.classList.toggle('visible', isOpen);
     document.body.style.overflow = isOpen ? 'hidden' : '';
   } else {
     s.classList.toggle('collapsed');
   }
+}
+
+function closeAllMobileSidebars() {
+  document.querySelectorAll('.sidebar').forEach(s => s.classList.remove('mobile-open'));
+  document.querySelectorAll('.sidebar-mobile-backdrop').forEach(b => b.classList.remove('visible'));
+  document.body.style.overflow = '';
 }
 
 function toggleTheme() {
@@ -3517,8 +3522,8 @@ async function saveVideo() {
   if (useLocalMode || !db) {
     if (fileInput && fileInput.files && fileInput.files[0]) {
       const file = fileInput.files[0];
-      if (file.size > 100 * 1024 * 1024) { // 100MB limit for local mode
-        showToast('⚠️ No modo offline, limite de vídeo é 100MB.');
+      if (file.size > 500 * 1024 * 1024) { // 500MB limit for local mode
+        showToast('⚠️ No modo offline, limite de vídeo é 500MB.');
         return;
       }
       
@@ -3575,8 +3580,8 @@ async function saveVideo() {
   try {
     if (fileInput && fileInput.files && fileInput.files[0]) {
       const file = fileInput.files[0];
-      if (file.size > 50 * 1024 * 1024) {
-        showToast('Vídeo muito grande. Máximo 50MB.');
+      if (file.size > 500 * 1024 * 1024) {
+        showToast('Vídeo muito grande. Máximo 500MB.');
         if (btn) { btn.disabled = false; btn.textContent = 'Publicar'; }
         return;
       }
@@ -3633,8 +3638,8 @@ async function savePhoto() {
   if (useLocalMode || !db) {
     if (fileInput && fileInput.files && fileInput.files[0]) {
       const file = fileInput.files[0];
-      if (file.size > 20 * 1024 * 1024) { // 20MB limit
-        showToast('⚠️ No modo offline, limite de foto é 20MB.');
+      if (file.size > 100 * 1024 * 1024) { // 100MB limit
+        showToast('⚠️ No modo offline, limite de foto é 100MB.');
         return;
       }
       
@@ -3689,8 +3694,8 @@ async function savePhoto() {
   try {
     if (fileInput && fileInput.files && fileInput.files[0]) {
       const file = fileInput.files[0];
-      if (file.size > 10 * 1024 * 1024) {
-        showToast('Foto muito grande. Máximo 10MB.');
+      if (file.size > 100 * 1024 * 1024) {
+        showToast('Foto muito grande. Máximo 100MB.');
         if (btn) { btn.disabled = false; btn.textContent = 'Publicar'; }
         return;
       }
@@ -3905,7 +3910,7 @@ function togglePrivacy(el, key) { el.classList.toggle('on'); state.privacy[key] 
 async function handleAvatarUpload(input) {
   if (!input.files || !input.files[0] || !state.user) return;
   const file = input.files[0];
-  if (file.size > 5 * 1024 * 1024) { showToast('Arquivo muito grande. Máximo 5MB.'); return; }
+  if (file.size > 50 * 1024 * 1024) { showToast('Arquivo muito grande. Máximo 50MB.'); return; }
 
   showToast('Fazendo upload...');
   const ext = file.name.split('.').pop();
@@ -3936,8 +3941,8 @@ async function handleAvatarUpload(input) {
   }
 
   // Fallback: salvar em Base64 no localStorage
-  if (file.size > 3 * 1024 * 1024) {
-    showToast('⚠️ Modo offline: limite de 3MB para foto de perfil. Tente uma imagem menor.');
+  if (file.size > 5 * 1024 * 1024) {
+    showToast('⚠️ Modo offline: limite de 5MB para foto de perfil. Tente uma imagem menor.');
     input.value = '';
     return;
   }

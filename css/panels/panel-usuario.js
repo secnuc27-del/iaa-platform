@@ -96,6 +96,7 @@ const PanelUsuario = (function () {
     navigate(section) {
       _currentSection = section || 'feed';
       updateActiveNav();
+      if (typeof closeAllMobileSidebars === 'function') closeAllMobileSidebars();
       const content = document.getElementById('user-content');
       if (!content) return;
       // Reset dash-content styles (may have been modified by TikTok video feed)
