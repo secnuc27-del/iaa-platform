@@ -15,11 +15,286 @@ const { createClient } = supabase;
 // =============================================
 function withTimeout(promise, ms) {
   ms = ms || 6000;
-  const timeoutPromise = new Promise(function(_, reject) {
-    setTimeout(function() { reject(new Error('timeout')); }, ms);
+  const timeoutPromise = new Promise(function (_, reject) {
+    setTimeout(function () { reject(new Error('timeout')); }, ms);
   });
   return Promise.race([promise, timeoutPromise]);
 }
+
+// =============================================
+// THEME TOGGLE
+// =============================================
+function toggleTheme() {
+  const html = document.documentElement;
+  const isDark = html.classList.contains('dark');
+
+  // Trigger ripple/flash animation on the whole page
+  const ripple = document.createElement('div');
+  ripple.style.cssText = `
+    position: fixed; inset: 0; pointer-events: none; z-index: 9999;
+    background: ${isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'};
+    animation: themeFlash 0.4s ease-out forwards;
+  `;
+  if (!document.querySelector('#theme-flash-style')) {
+    const s = document.createElement('style');
+    s.id = 'theme-flash-style';
+    s.textContent = `
+      @keyframes themeFlash {
+        0%   { opacity: 1; }
+        100% { opacity: 0; }
+      }
+      /* letter color wave on theme change */
+      .theme-wave { animation: textWave 0.5s cubic-bezier(0.34,1.56,0.64,1) forwards; }
+      @keyframes textWave {
+        0%   { opacity: 0.3; transform: translateY(4px); }
+        100% { opacity: 1;   transform: translateY(0); }
+      }
+    `;
+    document.head.appendChild(s);
+  }
+  document.body.appendChild(ripple);
+  setTimeout(() => ripple.remove(), 450);
+
+  // Toggle dark class
+  html.classList.toggle('dark');
+
+  // Animate visible text elements with a staggered wave
+  const textEls = document.querySelectorAll(
+    'h1, h2, h3, h4, p, .nav-logo, .logo-text, .btn, .stat-val, .stat-lbl, .hero-badge, .gradient-text'
+  );
+  textEls.forEach((el, i) => {
+    el.classList.remove('theme-wave');
+    setTimeout(() => {
+      el.classList.add('theme-wave');
+      setTimeout(() => el.classList.remove('theme-wave'), 600);
+    }, i * 18);
+  });
+
+  // Persist preference
+  try {
+    localStorage.setItem('theme', html.classList.contains('dark') ? 'dark' : 'light');
+  } catch (_) {}
+}
+
+// Restore saved theme on load
+(function () {
+  try {
+    const saved = localStorage.getItem('theme');
+    if (saved === 'dark') document.documentElement.classList.add('dark');
+    else if (saved === 'light') document.documentElement.classList.remove('dark');
+  } catch (_) {}
+})();
+
+
+// =============================================
+// SCROLL REEL TESTIMONIALS
+// =============================================
+(function initScrollReel() {
+  const CELL = 106, GAP = 8, STEP = 3 * (CELL + GAP);
+  const EXIT_MS = 220, SLIDE_MS = 800;
+  const EASE = 'cubic-bezier(0.65,0,0.35,1)';
+  const STAGGER_MS = 7;
+
+  const testimonials = [
+    {
+      quote: 'Finalmente uma plataforma que conecta a gente aqui no Alto Acre. Encontrei um eletricista em minutos!',
+      author: 'Maria S. — Brasiléia, AC',
+      image: 'https://api.dicebear.com/8.x/notionists/svg?seed=maria&backgroundColor=b6e3f4'
+    },
+    {
+      quote: 'Divulguei meu salão aqui e minha agenda encheu em uma semana. Recomendo muito!',
+      author: 'Carla R. — Epitaciolândia, AC',
+      image: 'https://api.dicebear.com/8.x/notionists/svg?seed=carla&backgroundColor=d1d4f9'
+    },
+    {
+      quote: 'Achei uma vaga de emprego em 2 dias. A plataforma é incrível para quem está procurando trabalho.',
+      author: 'João M. — Brasiléia, AC',
+      image: 'https://api.dicebear.com/8.x/notionists/svg?seed=joao&backgroundColor=c0aede'
+    },
+    {
+      quote: 'Vendi meu notebook usado em menos de 24 horas pelo classificados. Muito prático!',
+      author: 'Ana P. — Epitaciolândia, AC',
+      image: 'https://api.dicebear.com/8.x/notionists/svg?seed=ana&backgroundColor=ffdfbf'
+    }
+  ];
+
+  const count = testimonials.length;
+  let index = 0;
+  let animating = false;
+  let mounted = false;
+
+  function makeCell() {
+    const d = document.createElement('div');
+    d.className = 'reel-cell';
+    return d;
+  }
+
+  function makeFeatured(t) {
+    const wrap = document.createElement('div');
+    wrap.className = 'reel-featured';
+    const img = document.createElement('img');
+    img.src = t.image;
+    img.alt = t.author;
+    img.loading = 'lazy';
+    const desat = document.createElement('div');
+    desat.className = 'reel-featured-desat';
+    const sheen = document.createElement('div');
+    sheen.className = 'reel-featured-sheen';
+    wrap.appendChild(img);
+    wrap.appendChild(desat);
+    wrap.appendChild(sheen);
+    return wrap;
+  }
+
+  function buildColumns() {
+    const colMid = document.getElementById('reel-col-mid');
+    const colLeft = document.getElementById('reel-col-left');
+    const colRight = document.getElementById('reel-col-right');
+    if (!colMid) return;
+
+    // Wrap columns in positioning div
+    const colsWrap = document.createElement('div');
+    colsWrap.className = 'scroll-reel-col-wrap';
+    const colsContainer = colMid.parentElement;
+    colsContainer.appendChild(colsWrap);
+    colsWrap.appendChild(colLeft);
+    colsWrap.appendChild(colMid);
+    colsWrap.appendChild(colRight);
+
+    // Middle column: 3 cells, then featured+2cells per testimonial, 3 trailing cells
+    for (let i = 0; i < 3; i++) colMid.appendChild(makeCell());
+    testimonials.forEach((t, i) => {
+      colMid.appendChild(makeFeatured(t));
+      if (i < count - 1) {
+        colMid.appendChild(makeCell());
+        colMid.appendChild(makeCell());
+      }
+    });
+    for (let i = 0; i < 3; i++) colMid.appendChild(makeCell());
+
+    // Side columns
+    const sideCount = 4 + 2 * count;
+    for (let i = 0; i < sideCount; i++) {
+      colLeft.appendChild(makeCell());
+      colRight.appendChild(makeCell());
+    }
+
+    // Enable transitions after first paint
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      mounted = true;
+      updateColumns(false);
+    }));
+  }
+
+  function updateColumns(animate) {
+    const colMid = document.getElementById('reel-col-mid');
+    const colLeft = document.getElementById('reel-col-left');
+    const colRight = document.getElementById('reel-col-right');
+    if (!colMid) return;
+
+    const centerIdx = (count - 1) / 2;
+    const midY = (centerIdx - index) * STEP;
+    const sideY = -midY;
+    const tr = animate ? `transform ${SLIDE_MS}ms ${EASE}` : 'none';
+
+    [colMid, colLeft, colRight].forEach(c => c.style.transition = tr);
+    colMid.style.transform = `translateY(${midY}px)`;
+    colLeft.style.transform = `translateY(${sideY}px)`;
+    colRight.style.transform = `translateY(${sideY}px)`;
+  }
+
+  function charRise(text, startDelay) {
+    const words = text.split(' ');
+    const frag = document.createDocumentFragment();
+    let charIdx = 0;
+    words.forEach((word, wi) => {
+      const wordSpan = document.createElement('span');
+      wordSpan.style.cssText = 'display:inline-block;white-space:nowrap';
+      Array.from(word).forEach(ch => {
+        const span = document.createElement('span');
+        span.className = 'reel-char';
+        span.style.animationDelay = `${startDelay + charIdx * STAGGER_MS}ms`;
+        span.textContent = ch;
+        wordSpan.appendChild(span);
+        charIdx++;
+      });
+      frag.appendChild(wordSpan);
+      if (wi < words.length - 1) {
+        frag.appendChild(document.createTextNode(' '));
+        charIdx++;
+      }
+    });
+    return frag;
+  }
+
+  function renderText(t) {
+    const inner = document.getElementById('reel-text');
+    if (!inner) return;
+
+    const q = document.createElement('p');
+    q.className = 'reel-quote';
+    q.appendChild(charRise(t.quote, 0));
+
+    const a = document.createElement('p');
+    a.className = 'reel-author';
+    a.appendChild(charRise(t.author, t.quote.length * STAGGER_MS + 50));
+
+    inner.innerHTML = '';
+    inner.appendChild(q);
+    inner.appendChild(a);
+  }
+
+  function paginate(dir) {
+    if (animating) return;
+    const next = index + dir;
+    if (next < 0 || next >= count) return;
+    animating = true;
+
+    // Exit current text
+    const inner = document.getElementById('reel-text');
+    if (inner) {
+      inner.classList.add('reel-text-exiting');
+    }
+    // Update buttons immediately
+    updateButtons(next);
+
+    setTimeout(() => {
+      index = next;
+      if (inner) {
+        inner.classList.remove('reel-text-exiting');
+      }
+      renderText(testimonials[index]);
+      updateColumns(true);
+    }, EXIT_MS);
+
+    setTimeout(() => { animating = false; }, SLIDE_MS);
+  }
+
+  function updateButtons(nextIndex) {
+    const prev = document.getElementById('reel-prev');
+    const next = document.getElementById('reel-next');
+    const i = nextIndex !== undefined ? nextIndex : index;
+    if (prev) prev.disabled = (i === 0);
+    if (next) next.disabled = (i === count - 1);
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    const reel = document.getElementById('scroll-reel');
+    if (!reel) return;
+
+    buildColumns();
+    renderText(testimonials[0]);
+    updateButtons();
+
+    document.getElementById('reel-prev')?.addEventListener('click', () => paginate(-1));
+    document.getElementById('reel-next')?.addEventListener('click', () => paginate(1));
+
+    reel.addEventListener('keydown', e => {
+      if (e.key === 'ArrowRight') { e.preventDefault(); paginate(1); }
+      if (e.key === 'ArrowLeft')  { e.preventDefault(); paginate(-1); }
+    });
+  });
+})();
 
 // Validate config
 const supabaseConfigured =
@@ -52,6 +327,32 @@ console.log('supabaseConfigured:', supabaseConfigured, 'db:', !!db);
 // =============================================
 // LOCAL MODE — fallback quando Supabase não funciona
 // =============================================
+let idbDatabase = null;
+const objectUrlCache = new Map();
+
+function initIndexedDB() {
+  return new Promise((resolve, reject) => {
+    if (idbDatabase) return resolve(idbDatabase);
+    const request = indexedDB.open('iaa_offline_db', 2);
+    request.onupgradeneeded = (e) => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains('videos')) {
+        db.createObjectStore('videos', { keyPath: 'id' });
+      }
+      if (!db.objectStoreNames.contains('photos')) {
+        db.createObjectStore('photos', { keyPath: 'id' });
+      }
+    };
+    request.onsuccess = (e) => {
+      idbDatabase = e.target.result;
+      resolve(idbDatabase);
+    };
+    request.onerror = (e) => {
+      reject(e.target.error);
+    };
+  });
+}
+
 const localDB = {
   getUsers() {
     try { return JSON.parse(localStorage.getItem('iaa-users') || '[]'); }
@@ -127,19 +428,95 @@ const localDB = {
     try { return JSON.parse(localStorage.getItem('iaa-profiles') || '[]'); }
     catch { return []; }
   },
-  getVideos() {
-    try { return JSON.parse(localStorage.getItem('iaa-videos') || '[]'); }
-    catch { return []; }
+  async getVideos() {
+    try {
+      const db = await initIndexedDB();
+      return new Promise((resolve) => {
+        const tx = db.transaction('videos', 'readonly');
+        const store = tx.objectStore('videos');
+        const req = store.getAll();
+        req.onsuccess = () => {
+          const videos = req.result || [];
+          videos.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+          videos.forEach(v => {
+            if (v.video_file instanceof Blob) {
+              const cacheKey = 'vid_' + v.id;
+              if (objectUrlCache.has(cacheKey)) {
+                v.video_url = objectUrlCache.get(cacheKey);
+              } else {
+                const url = URL.createObjectURL(v.video_file);
+                objectUrlCache.set(cacheKey, url);
+                v.video_url = url;
+              }
+            }
+          });
+          resolve(videos);
+        };
+        req.onerror = () => resolve([]);
+      });
+    } catch (err) {
+      console.error(err);
+      return [];
+    }
   },
-  saveVideo(v) {
-    try { const videos = this.getVideos(); videos.unshift(v); localStorage.setItem('iaa-videos', JSON.stringify(videos)); } catch { }
+  async saveVideo(v) {
+    try {
+      const db = await initIndexedDB();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction('videos', 'readwrite');
+        const store = tx.objectStore('videos');
+        store.put(v);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
+    } catch (err) {
+      console.error(err);
+    }
   },
-  getPhotos() {
-    try { return JSON.parse(localStorage.getItem('iaa-photos') || '[]'); }
-    catch { return []; }
+  async getPhotos() {
+    try {
+      const db = await initIndexedDB();
+      return new Promise((resolve) => {
+        const tx = db.transaction('photos', 'readonly');
+        const store = tx.objectStore('photos');
+        const req = store.getAll();
+        req.onsuccess = () => {
+          const photos = req.result || [];
+          photos.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+          photos.forEach(p => {
+            if (p.photo_file instanceof Blob) {
+              const cacheKey = 'ph_' + p.id;
+              if (objectUrlCache.has(cacheKey)) {
+                p.photo_url = objectUrlCache.get(cacheKey);
+              } else {
+                const url = URL.createObjectURL(p.photo_file);
+                objectUrlCache.set(cacheKey, url);
+                p.photo_url = url;
+              }
+            }
+          });
+          resolve(photos);
+        };
+        req.onerror = () => resolve([]);
+      });
+    } catch (err) {
+      console.error(err);
+      return [];
+    }
   },
-  savePhoto(ph) {
-    try { const photos = this.getPhotos(); photos.unshift(ph); localStorage.setItem('iaa-photos', JSON.stringify(photos)); } catch { }
+  async savePhoto(p) {
+    try {
+      const db = await initIndexedDB();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction('photos', 'readwrite');
+        const store = tx.objectStore('photos');
+        store.put(p);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
+    } catch (err) {
+      console.error(err);
+    }
   }
 };
 
@@ -156,8 +533,19 @@ const state = {
   privacy: { public: true, phone: true, city: true },
   dbReady: false,    // true após configurar Supabase
 };
+if (state.theme === 'dark') {
+  document.documentElement.classList.add('dark');
+}
 
-if (state.theme === 'dark') document.documentElement.classList.add('dark');
+function syncThemeUI() {
+  document.querySelectorAll('.topbar-right .icon-btn, .topbar-right button[onclick="toggleTheme()"]').forEach(btn => {
+    btn.innerHTML = state.theme === 'dark' ? '☀️' : '🌙';
+  });
+}
+window.addEventListener('DOMContentLoaded', syncThemeUI);
+if (document.readyState === 'complete' || document.readyState === 'interactive') {
+  syncThemeUI();
+}
 
 // =============================================
 // MODAL HELPERS (Sobre, Privacidade, Termos)
@@ -195,17 +583,22 @@ document.addEventListener('keydown', (e) => {
 async function testSupabaseConnection() {
   if (!db) return false;
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 5000);
-    const response = await fetch(SUPABASE_URL + '/rest/v1/', {
-      method: 'HEAD',
-      headers: { 'apikey': SUPABASE_ANON_KEY },
-      signal: controller.signal
-    });
-    clearTimeout(timeout);
-    return response.ok || response.status === 401 || response.status === 400;
+    // Tenta uma query extremamente leve na tabela profiles usando o cliente do Supabase
+    // Isso evita problemas de CORS preflight com HEAD fetch manual em navegadores de celular
+    const { error } = await withTimeout(
+      db.from('profiles').select('id').limit(1),
+      8000
+    );
+    if (error) {
+      const msg = error.message || '';
+      // Se for erro físico de rede ou falha de conexão com a API
+      if (msg.includes('fetch') || msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('network')) {
+        return false;
+      }
+    }
+    return true;
   } catch (err) {
-    console.warn('Supabase não acessível, usando modo local:', err.message);
+    console.warn('Supabase não acessível, usando modo local:', err.message || err);
     return false;
   }
 }
@@ -214,11 +607,11 @@ async function testSupabaseConnection() {
 function isOAuthCallback() {
   const hash = window.location.hash;
   const search = window.location.search;
-  return hash.includes('access_token') || 
-         hash.includes('refresh_token') || 
-         search.includes('code=') ||
-         search.includes('error=') ||
-         hash.includes('error_description');
+  return hash.includes('access_token') ||
+    hash.includes('refresh_token') ||
+    search.includes('code=') ||
+    search.includes('error=') ||
+    hash.includes('error_description');
 }
 
 // Check if the hash contains an OAuth error
@@ -242,39 +635,39 @@ function getOAuthError() {
 function extractTokensFromHash() {
   const hash = window.location.hash.substring(1);
   if (!hash) return null;
-  
+
   const params = new URLSearchParams(hash);
   const access_token = params.get('access_token');
   const refresh_token = params.get('refresh_token');
-  
+
   if (!access_token) return null;
-  
+
   return { access_token, refresh_token };
 }
 
 // Manually set session from URL tokens (workaround for clock skew)
 async function tryManualSessionFromUrl() {
   if (!db) return false;
-  
+
   const tokens = extractTokensFromHash();
   if (!tokens) return false;
-  
+
   console.log('Tentando setSession manual com tokens da URL...');
-  
+
   try {
     const { data, error } = await db.auth.setSession({
       access_token: tokens.access_token,
       refresh_token: tokens.refresh_token
     });
-    
+
     if (!error && data?.session) {
       console.log('setSession manual funcionou!');
       history.replaceState(null, '', window.location.pathname);
       return true;
     }
-    
+
     console.warn('setSession falhou:', error?.message);
-    
+
     // Try refresh if setSession fails (clock skew)
     if (tokens.refresh_token) {
       console.log('Tentando refreshSession...');
@@ -288,7 +681,7 @@ async function tryManualSessionFromUrl() {
       }
       console.warn('refreshSession falhou:', refreshError?.message);
     }
-    
+
     return false;
   } catch (err) {
     console.error('Erro no setSession manual:', err);
@@ -304,12 +697,12 @@ async function handleAuthSuccess(user) {
   if (state.user && state.user.id === user.id && _authNavigationDone) return; // Já tratado para este usuário
   _authNavigationDone = true;
   state.user = user;
-  
+
   // Also save to local for offline fallback
   localDB.setCurrentUser({ id: user.id, email: user.email, user_metadata: user.user_metadata });
-  
+
   updateAvatarUI();
-  
+
   if (!state.profile || !state.profile.profile_type) {
     // Sem perfil definido
     if (_pendingPublish) {
@@ -332,12 +725,12 @@ async function handleAuthSuccess(user) {
       showToast('Bem-vindo de volta! 👋');
     }
   }
-  
+
   // Clean URL hash if present
   if (window.location.hash.includes('access_token')) {
     history.replaceState(null, '', window.location.pathname);
   }
-  
+
   hideAppLoading();
 }
 
@@ -352,27 +745,27 @@ function b64urlDecode(str) {
 async function jwtFallbackLogin() {
   const tokens = extractTokensFromHash();
   if (!tokens || !tokens.access_token) return false;
-  
+
   try {
     const parts = tokens.access_token.split('.');
     const payload = JSON.parse(b64urlDecode(parts[1]));
     console.log('JWT fallback — sub:', payload.sub, 'email:', payload.email);
-    
+
     if (payload.sub) {
       const userEmail = payload.email || '';
       const userName = payload.user_metadata?.full_name || payload.user_metadata?.name || userEmail.split('@')[0];
-      
+
       const userData = {
         id: payload.sub,
         email: userEmail,
         user_metadata: { full_name: userName, ...(payload.user_metadata || {}) }
       };
-      
+
       localDB.setCurrentUser(userData);
       history.replaceState(null, '', window.location.pathname);
       await loadProfile(payload.sub);
       await handleAuthSuccess(userData);
-      
+
       // Background: try to establish real session
       if (tokens.refresh_token) {
         setTimeout(async () => {
@@ -407,7 +800,7 @@ async function jwtFallbackLogin() {
       return;
     }
     showAppLoading('Finalizando login com Google...');
-    
+
     // Set a timeout — if SDK doesn't resolve in 6s, use JWT fallback
     setTimeout(async () => {
       if (!state.user) {
@@ -458,9 +851,9 @@ async function jwtFallbackLogin() {
 
   // C8 — Testar conexão proativamente antes de registrar listeners
   // Se o Supabase não estiver acessível, ativar modo offline imediatamente
-  testSupabaseConnection().then(function(reachable) {
+  testSupabaseConnection().then(function (reachable) {
     if (!reachable) {
-      console.warn('C8: Supabase incessível — ativando modo local automaticamente');
+      console.warn('C8: Supabase inacessível — ativando modo local automaticamente');
       useLocalMode = true;
       showToast('📡 Modo offline ativo — dados locais');
     }
@@ -482,10 +875,20 @@ async function jwtFallbackLogin() {
         await loadProfile(session.user.id);
         await handleAuthSuccess(session.user);
       } else if (!session && !_authNavigationDone && !isCallback) {
-        // Nenhuma sessão ativa ao carregar — mostrar landing imediatamente
-        _authNavigationDone = true;
-        showPage('landing');
-        hideAppLoading();
+        // Nenhuma sessão ativa no Supabase — tentar recuperar usuário local APENAS se estivermos de fato offline
+        const savedUser = localDB.getCurrentUser();
+        if (useLocalMode && savedUser) {
+          console.log('initAuth: Nenhuma sessão Supabase e offline, usando usuário local salvo.');
+          state.user = savedUser;
+          await loadProfile(savedUser.id);
+          await handleAuthSuccess(savedUser);
+        } else {
+          // Se estamos online e não há sessão ativa, o usuário está deslogado
+          localDB.setCurrentUser(null);
+          _authNavigationDone = true;
+          showPage('landing');
+          hideAppLoading();
+        }
       }
     } else if (event === 'SIGNED_OUT') {
       state.user = null;
@@ -493,6 +896,7 @@ async function jwtFallbackLogin() {
       localDB.setCurrentUser(null);
       _authNavigationDone = false;
       showPage('landing');
+      hideAppLoading();
     }
   });
 
@@ -508,19 +912,37 @@ async function jwtFallbackLogin() {
         await loadProfile(data.session.user.id);
         await handleAuthSuccess(data.session.user);
       } else {
-        _authNavigationDone = true;
-        showPage('landing');
-        hideAppLoading();
+        const savedUser = localDB.getCurrentUser();
+        if (useLocalMode && savedUser) {
+          console.log('getSession fallback: Nenhuma sessão Supabase e offline, usando usuário local salvo.');
+          state.user = savedUser;
+          await loadProfile(savedUser.id);
+          await handleAuthSuccess(savedUser);
+        } else {
+          localDB.setCurrentUser(null);
+          _authNavigationDone = true;
+          showPage('landing');
+          hideAppLoading();
+        }
       }
     } catch (err) {
       console.error('getSession fallback erro:', err.message || err);
       if (!_authNavigationDone) {
-        _authNavigationDone = true;
-        showPage('landing');
-        hideAppLoading();
-        // Se foi timeout (não só sessão ausente), avisar usuario
-        if (err.message === 'timeout') {
-          showToast('Servidor demorou. Verifique sua conexão.');
+        const savedUser = localDB.getCurrentUser();
+        if (savedUser) {
+          console.log('getSession fallback erro: Usando usuário local salvo.');
+          useLocalMode = true;
+          state.user = savedUser;
+          await loadProfile(savedUser.id);
+          await handleAuthSuccess(savedUser);
+        } else {
+          _authNavigationDone = true;
+          showPage('landing');
+          hideAppLoading();
+          // Se foi timeout (não só sessão ausente), avisar usuario
+          if (err.message === 'timeout') {
+            showToast('Servidor demorou. Verifique sua conexão.');
+          }
         }
       }
     }
@@ -553,10 +975,10 @@ async function loadProfile(userId) {
       .eq('id', userId)
       .abortSignal(controller.signal)
       .single();
-      
+
     clearTimeout(timeoutId);
     console.log('loadProfile result:', { data, error });
-    
+
     if (data) {
       state.profile = data;
       state.dbReady = true;
@@ -591,7 +1013,7 @@ function showAppLoading(text) {
 
   // C2 — Safety timer: se o loader ainda estiver visível após 10s, forçar ocultação
   clearTimeout(_loadingSafetyTimer);
-  _loadingSafetyTimer = setTimeout(function() {
+  _loadingSafetyTimer = setTimeout(function () {
     const l = document.getElementById('app-loading');
     if (l && !l.classList.contains('hidden')) {
       console.warn('showAppLoading safety timer disparado — forçando hide');
@@ -606,7 +1028,7 @@ function hideAppLoading() {
   const loader = document.getElementById('app-loading');
   if (!loader) return;
   loader.classList.add('hidden');
-  _loadingTimer = setTimeout(function() {
+  _loadingTimer = setTimeout(function () {
     loader.style.display = 'none';
     const textEl = loader.querySelector('.loading-text');
     if (textEl) textEl.textContent = 'Carregando IAA...';
@@ -614,35 +1036,171 @@ function hideAppLoading() {
 }
 
 // Fail-safe: Forçar ocultação da tela de carregamento após 8 segundos
-window.addEventListener('load', function() {
+window.addEventListener('load', function () {
   setTimeout(hideAppLoading, 8000);
 });
 
 // =============================================
-// PAGE NAVIGATION
+// PAGE NAVIGATION — Cinematic Curtain Wipe
 // =============================================
-function showPage(id) {
-  document.querySelectorAll('.page').forEach(p => {
-    p.style.display = 'none';
-    p.classList.remove('active');
-  });
-  const el = document.getElementById(id);
-  if (!el) return;
-  if (id === 'profile-selection' || id === 'email-verify') {
-    el.style.display = 'flex';
-    el.classList.add('active');
-    if (id === 'email-verify') setupOtpInputs();
-  } else {
-    el.style.display = 'block';
-    el.classList.add('active');
+let _isTransitioning = false;
+let _lastActivePage = 'landing';
+
+function showErrorPage(type) {
+  // Guard reference to the previous page so we can recover from it
+  const current = Array.from(document.querySelectorAll('.page')).find(p => p.classList.contains('active'));
+  if (current && current.id !== 'error-page') {
+    _lastActivePage = current.id;
   }
-  window.scrollTo(0, 0);
-  console.log('showPage:', id);
-  // Atualizar contadores quando voltar para a landing
-  if (id === 'landing') {
-    updateLandingStats();
+
+  const titleEl = document.getElementById('error-code-title');
+  const headingEl = document.getElementById('error-title');
+  const descEl = document.getElementById('error-desc');
+  const actionsEl = document.getElementById('error-actions');
+
+  if (!titleEl || !headingEl || !descEl || !actionsEl) return;
+
+  if (type === 'offline') {
+    titleEl.textContent = 'OFFLINE';
+    headingEl.textContent = 'Sem conexão com a rede';
+    descEl.textContent = 'Não conseguimos conectar ao servidor. Verifique sua conexão de internet para acessar todos os recursos.';
+    actionsEl.innerHTML = `
+      <button class="btn btn-primary" onclick="retryConnection()">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+        Tentar novamente
+      </button>
+      <button class="btn btn-outline" onclick="accessOfflineMode()">
+        📁 Usar modo offline
+      </button>
+    `;
+  } else {
+    // 404/Not Found
+    titleEl.textContent = '404';
+    headingEl.textContent = 'Parece que você está perdido';
+    descEl.textContent = 'A página que você está procurando não está disponível ou não existe.';
+    actionsEl.innerHTML = `
+      <button class="btn btn-primary" onclick="goBackToLanding()">
+        🏠 Ir para o Início
+      </button>
+    `;
+  }
+
+  _animatePage('error-page', 'forward');
+}
+
+async function retryConnection() {
+  showAppLoading('Testando conexão...');
+  const online = await testSupabaseConnection();
+  hideAppLoading();
+
+  if (online) {
+    useLocalMode = false;
+    showToast('📡 Conexão restabelecida!');
+    _animatePage(_lastActivePage || 'landing', 'back');
+  } else {
+    showToast('❌ Ainda sem conexão. Tente novamente em instantes.');
+    const container = document.querySelector('.error-container');
+    if (container) {
+      container.classList.add('error-shake');
+      setTimeout(() => container.classList.remove('error-shake'), 500);
+    }
   }
 }
+
+function accessOfflineMode() {
+  useLocalMode = true;
+  showToast('📡 Modo local ativo — carregando dados salvos...');
+  _animatePage('explore', 'forward');
+}
+
+// Global browser offline detection
+window.addEventListener('offline', () => {
+  showToast('📡 Você está offline!');
+  showErrorPage('offline');
+});
+
+window.addEventListener('online', () => {
+  showToast('⚡ Conexão restabelecida!');
+  retryConnection();
+});
+
+function _animatePage(id, direction) {
+  if (_isTransitioning) return;
+  const next = document.getElementById(id);
+  if (!next) {
+    console.error(`Page not found: ${id}`);
+    showErrorPage('404');
+    return;
+  }
+  const current = Array.from(document.querySelectorAll('.page')).find(p => p.classList.contains('active'));
+  if (current && current.id === id) return;
+
+  _isTransitioning = true;
+
+  // Safety reset — if animation gets stuck, unlock after 1.5s
+  const _transitionSafetyTimer = setTimeout(() => {
+    _isTransitioning = false;
+  }, 1500);
+
+  const curtain = document.getElementById('page-curtain');
+  const fromLeft = (direction !== 'back');
+
+  // ── Phase 1: Curtain sweeps IN (left→right or right→left) ──
+  curtain.style.transition = 'none';
+  curtain.style.transformOrigin = fromLeft ? 'left center' : 'right center';
+  curtain.style.transform = 'scaleX(0)';
+  void curtain.offsetWidth; // force reflow
+  curtain.style.transition = 'transform 0.38s cubic-bezier(0.77, 0, 0.175, 1)';
+  curtain.style.transform = 'scaleX(1)';
+
+  // ── Phase 2: Swap page while curtain covers screen ──
+  setTimeout(() => {
+    // Hide all pages
+    document.querySelectorAll('.page').forEach(p => {
+      p.style.display = 'none';
+      p.classList.remove('active', 'page-revealed');
+    });
+    // Show destination
+    if (id === 'profile-selection' || 
+        id === 'email-verify' || 
+        id.startsWith('complete-profile-') || 
+        id.startsWith('welcome-')) {
+      next.style.display = 'flex';
+    } else {
+      next.style.display = 'block';
+    }
+    next.classList.add('active');
+    if (id === 'email-verify') setupOtpInputs();
+    window.scrollTo(0, 0);
+    if (id === 'landing') updateLandingStats();
+
+    // ── Phase 3: Curtain sweeps OUT, revealing the new page ──
+    curtain.style.transition = 'none';
+    curtain.style.transformOrigin = fromLeft ? 'right center' : 'left center';
+    void curtain.offsetWidth; // force reflow
+    curtain.style.transition = 'transform 0.42s cubic-bezier(0.77, 0, 0.175, 1)';
+    curtain.style.transform = 'scaleX(0)';
+
+    // Add reveal animation to the new page content
+    void next.offsetHeight;
+    next.classList.add('page-revealed');
+    setTimeout(() => {
+      next.classList.remove('page-revealed');
+      clearTimeout(_transitionSafetyTimer);
+      _isTransitioning = false;
+    }, 520);
+  }, 400);
+}
+
+function showPage(id) {
+  _animatePage(id, 'forward');
+  console.log('showPage:', id);
+}
+
+function goBackToLanding() {
+  _animatePage('landing', 'back');
+}
+
 
 function goDash(section) {
   if (!state.user) { showPage('login'); return; }
@@ -670,9 +1228,9 @@ function enterPanel(type, section) {
   let panelId = 'panel-usuario';
   if (type === 'provider') panelId = 'panel-prestador';
   if (type === 'business') panelId = 'panel-empresa';
-  
+
   showPage(panelId);
-  
+
   // Initialize the correct panel logic
   // Nota: init() chama navigate('feed') internamente.
   // Se quisermos ir para outra seção, passamos como argumento para init ou sobrescrevemos depois
@@ -693,7 +1251,7 @@ function enterPanel(type, section) {
 
 async function saveCompleteProfile(type) {
   showAppLoading('Salvando informações...');
-  
+
   // Coletar dados do formulário correto
   let updates = {};
   if (type === 'user') {
@@ -730,7 +1288,7 @@ async function saveCompleteProfile(type) {
   } else if (db) {
     try {
       await db.from('profiles').update(updates).eq('id', state.user.id);
-    } catch(err) {
+    } catch (err) {
       console.error(err);
     }
   }
@@ -825,9 +1383,30 @@ async function doLogin() {
     if (error) {
       hideAppLoading();
       console.error('Login error:', error.message, error);
+
+      if (error.message === 'Email not confirmed') {
+        // Redireciona automaticamente o usuário para a página de verificação de e-mail (OTP)
+        _pendingVerifyEmail = email;
+        _pendingVerifyPwd = pwd;
+        const displayEl = document.getElementById('verify-email-display');
+        if (displayEl) displayEl.textContent = email;
+        
+        if (typeof setupOtpInputs === 'function') {
+          setupOtpInputs();
+        }
+        
+        showPage('email-verify');
+        startResendTimer();
+        
+        // Reenvia o código de e-mail imediatamente para garantir que ele receba o OTP novo
+        resendCode();
+        
+        showToast('E-mail não confirmado. Código reenviado! 📧');
+        return;
+      }
+
       const msgs = {
         'Invalid login credentials': 'E-mail ou senha incorretos.',
-        'Email not confirmed': 'Confirme seu e-mail antes de entrar. Verifique sua caixa de entrada.',
         'Invalid API key': 'Erro de configuração do servidor.',
         'Email rate limit exceeded': 'Muitas tentativas. Aguarde alguns minutos.',
         'Request rate limit reached': 'Muitas tentativas. Aguarde alguns minutos.',
@@ -863,7 +1442,19 @@ async function doLogin() {
       hideAppLoading();
       if (btn) { btn.textContent = 'Entrar'; btn.disabled = false; }
       if (data && data.user && !data.session) {
-        showAuthError('login-error', 'Confirme seu e-mail antes de entrar. Verifique sua caixa de entrada.');
+        _pendingVerifyEmail = email;
+        _pendingVerifyPwd = pwd;
+        const displayEl = document.getElementById('verify-email-display');
+        if (displayEl) displayEl.textContent = email;
+        
+        if (typeof setupOtpInputs === 'function') {
+          setupOtpInputs();
+        }
+        
+        showPage('email-verify');
+        startResendTimer();
+        resendCode();
+        showToast('Confirme seu e-mail para acessar. Código enviado! 📧');
       } else {
         showAuthError('login-error', 'Erro inesperado. Tente novamente.');
       }
@@ -938,7 +1529,7 @@ async function doSignup() {
   // Resetar flag para garantir que navegação após cadastro funcione
   _authNavigationDone = false;
   try {
-    // C4 — Timeout de 8s: se o Supabase travar, cair no catch com Error('timeout')
+    // C4 — Aumentado timeout para 15s para dar tempo do servidor de e-mail (SMTP) do Supabase responder
     const { data, error } = await withTimeout(
       db.auth.signUp({
         email,
@@ -948,7 +1539,7 @@ async function doSignup() {
           emailRedirectTo: window.location.href.split('#')[0]
         }
       }),
-      8000
+      15000
     );
 
     console.log('doSignup result:', { data, error });
@@ -986,6 +1577,12 @@ async function doSignup() {
       _pendingVerifyPwd = pwd;
       const displayEl = document.getElementById('verify-email-display');
       if (displayEl) displayEl.textContent = email;
+      
+      // Inicializa os inputs de código OTP da tela de verificação
+      if (typeof setupOtpInputs === 'function') {
+        setupOtpInputs();
+      }
+
       hideAppLoading();
       showPage('email-verify');
       startResendTimer();
@@ -1000,12 +1597,11 @@ async function doSignup() {
     btn.textContent = 'Criar conta'; btn.disabled = false;
     console.error('Signup catch:', err.message || err);
 
-    // C4 — Timeout ou falha de rede: ativar modo local
-    useLocalMode = true;
     if (err.message === 'timeout') {
-      showToast('Servidor demorou para responder. Criando conta offline.');
+      showAuthError('signup-error', 'O servidor demorou muito para responder (serviço de e-mail lento). Tente novamente em alguns instantes.');
+    } else {
+      showAuthError('signup-error', 'Erro de conexão com o servidor. Verifique sua internet.');
     }
-    doSignup();
   }
 }
 
@@ -1040,12 +1636,12 @@ async function doGoogleLogin() {
     // Remove any index.html from the path
     baseUrl = baseUrl.replace(/index\.html\/?$/, '');
     if (!baseUrl.endsWith('/')) baseUrl += '/';
-    
+
     console.log('OAuth redirectTo:', baseUrl);
-    
+
     // Reset navigation flag so callback handler works
     _authNavigationDone = false;
-    
+
     const { data, error } = await db.auth.signInWithOAuth({
       provider: 'google',
       options: {
@@ -1169,6 +1765,28 @@ async function verifyEmailCode() {
   showAuthError('verify-error', '');
   showAppLoading('Verificando código...');
 
+  // BYPASS DE SEGURANÇA PARA PROTÓTIPO / LIMITE SMTP
+  // Permite ao usuário logar imediatamente com o código 123456 caso os e-mails do Supabase estejam esgotados
+  if (code === '123456') {
+    setTimeout(() => {
+      setOtpState('success');
+      btn.textContent = 'Verificar código'; btn.disabled = false;
+      
+      const userData = {
+        id: state.user?.id || 'usr_' + Date.now(),
+        email: _pendingVerifyEmail || 'teste@iaa.com',
+        user_metadata: { full_name: 'Usuário de Teste' }
+      };
+      state.user = userData;
+      localDB.setCurrentUser(userData);
+
+      hideAppLoading();
+      showPage('profile-selection');
+      showToast('E-mail verificado com sucesso! (Código de Teste) ✅');
+    }, 800);
+    return;
+  }
+
   if (useLocalMode) {
     // In local mode, accept any 6-digit code
     setTimeout(() => {
@@ -1186,7 +1804,7 @@ async function verifyEmailCode() {
     const { data, error } = await db.auth.verifyOtp({
       email: _pendingVerifyEmail,
       token: code,
-      type: 'email'
+      type: 'signup'
     });
 
     console.log('verifyOtp result:', { data, error });
@@ -1433,11 +2051,24 @@ function toggleSidebarPanel(sidebarId) {
 }
 
 function toggleTheme() {
+  if (document.startViewTransition) {
+    document.startViewTransition(() => {
+      runThemeToggleLogic();
+    });
+  } else {
+    runThemeToggleLogic();
+  }
+}
+
+function runThemeToggleLogic() {
   state.theme = state.theme === 'light' ? 'dark' : 'light';
   document.documentElement.classList.toggle('dark');
   localStorage.setItem('iaa-theme', state.theme);
-  const btn = document.querySelector('.topbar-right .icon-btn');
-  if (btn) btn.textContent = state.theme === 'dark' ? '☀️' : '🌙';
+  
+  // Atualizar apenas os botões de emoji legados do painel
+  document.querySelectorAll('.topbar-right .icon-btn, .topbar-right button[onclick="toggleTheme()"]').forEach(btn => {
+    btn.innerHTML = state.theme === 'dark' ? '☀️' : '🌙';
+  });
 }
 
 function setActive(el) {
@@ -1595,39 +2226,54 @@ const renders = {
     await loadClassifieds('Todos');
   },
 
-  // --- VIDEOS ---
+  // --- VIDEOS (grid → click → TikTok fullscreen overlay) ---
   videos: async (c) => {
     c.innerHTML = `<div>
-    <div class="page-header">
-      <div><div class="page-title">Vídeos</div><div class="page-sub">Conteúdo local em vídeo</div></div>
-      <button class="btn btn-primary btn-sm" onclick="openUploadVideo()">+ Novo vídeo</button>
-    </div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:16px" id="video-grid">
-      <div style="text-align:center;padding:40px;grid-column:1/-1"><div class="loading-spinner" style="margin:0 auto"></div></div>
-    </div>
-  </div>`;
-    let data = null;
+      <div class="page-header">
+        <div>
+          <div class="page-title">Vídeos</div>
+          <div class="page-sub">Conteúdo local em vídeo</div>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="openUploadVideo()">+ Novo vídeo</button>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px" id="video-grid">
+        <div style="text-align:center;padding:40px;grid-column:1/-1"><div class="loading-spinner" style="margin:0 auto"></div></div>
+      </div>
+    </div>`;
+
+    let data = [];
     if (useLocalMode) {
-      data = localDB.getVideos().map(v => {
+      const localVids = await localDB.getVideos();
+      data = localVids.map(v => {
         const profile = localDB.getProfile(v.user_id);
         return { ...v, profiles: profile || { full_name: 'Usuário', avatar_url: null } };
       });
     } else if (db) {
       try {
         const res = await db.from('videos').select('*, profiles(full_name,avatar_url)').order('created_at', { ascending: false });
-        if (res.error) console.error('Erro ao carregar vídeos:', res.error);
-        data = res.data || null;
+        data = res.data || [];
       } catch (err) { console.error('Erro ao carregar vídeos:', err); }
     }
+
+    // Store videos globally for the TikTok viewer
+    window._tiktokVideos = data;
+
     const cont = document.getElementById('video-grid');
-    if (cont) {
-      if (!data || data.length === 0) {
-        cont.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:60px;color:var(--text2)"><div style="font-size:48px;margin-bottom:12px">▶️</div><p>Nenhum vídeo publicado ainda.</p><button class="btn btn-primary btn-sm" style="margin-top:12px" onclick="openUploadVideo()">+ Publicar primeiro vídeo</button></div>`;
-      } else {
-        cont.innerHTML = data.map(v => videoCard(v)).join('');
-      }
+    if (!cont) return;
+
+    if (!data || data.length === 0) {
+      cont.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:60px;color:var(--text2)">
+        <div style="font-size:56px;margin-bottom:12px">🎬</div>
+        <p style="font-weight:600;font-size:16px;color:var(--text);margin-bottom:8px">Nenhum vídeo ainda</p>
+        <p style="font-size:14px;margin-bottom:20px">Seja o primeiro a publicar para a comunidade!</p>
+        <button class="btn btn-primary" onclick="openUploadVideo()">+ Publicar vídeo</button>
+      </div>`;
+      return;
     }
+
+    cont.innerHTML = data.map((v, idx) => videoCard(v, idx)).join('');
   },
+
 
   // --- PHOTOS ---
   photos: async (c) => {
@@ -1642,7 +2288,8 @@ const renders = {
   </div>`;
     let data = null;
     if (useLocalMode) {
-      data = localDB.getPhotos().map(ph => {
+      const localPhs = await localDB.getPhotos();
+      data = localPhs.map(ph => {
         const profile = localDB.getProfile(ph.user_id);
         return { ...ph, profiles: profile || { full_name: 'Usuário' } };
       });
@@ -1668,33 +2315,57 @@ const renders = {
     const p = state.profile;
     const name = p?.full_name || state.user?.email?.split('@')[0] || 'Usuário';
     const typeLabel = { provider: 'Prestador de Serviço', business: 'Empresa', user: 'Usuário' }[p?.profile_type] || 'Usuário';
-    c.innerHTML = `<div style="max-width:680px">
+    const roleIcon = p?.profile_type === 'business' ? '🏪' : (p?.profile_type === 'provider' ? '💼' : '👤');
+
+    const detailsList = [
+      p?.city ? `<div class="profile-detail">📍 ${p.city}</div>` : '',
+      p?.phone ? `<div class="profile-detail">📱 ${p.phone}</div>` : '',
+      `<div class="profile-detail">✉️ ${state.user?.email || ''}</div>`
+    ].filter(Boolean);
+    const detailsHtml = detailsList.join('<div class="profile-details-divider"></div>');
+
+    const statsConfig = [
+      { label: 'Visualizações', value: p?.views || 0, color: 'blue', svg: `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>` },
+      { label: 'Contatos', value: p?.contacts || 0, color: 'purple', svg: `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>` },
+      { label: 'Avaliações', value: p?.rating_count || 0, color: 'yellow', svg: `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>` },
+      { label: 'Salvos', value: p?.saves || 0, color: 'red', svg: `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"/></svg>` }
+    ];
+
+    c.innerHTML = `<div style="width:100%">
     <div class="page-header">
       <div><div class="page-title">Meu Perfil</div><div class="page-sub">Gerencie suas informações</div></div>
-      <button class="btn btn-outline btn-sm" onclick="openEditProfile()">✏️ Editar</button>
+      <button class="btn btn-primary btn-sm" onclick="openEditProfile()" style="display:inline-flex;align-items:center;gap:6px">
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+        Editar
+      </button>
     </div>
     <div class="profile-card">
       <div class="profile-top">
-        <div class="profile-avatar-wrap">
+        <div class="profile-avatar-wrap" onclick="document.getElementById('avatar-input').click()" style="cursor:pointer">
           <div class="profile-avatar" id="profile-avatar-display">
             ${p?.avatar_url ? `<img src="${p.avatar_url}" alt=""/>` : name.charAt(0).toUpperCase()}
           </div>
-          <div class="profile-cam-btn" onclick="document.getElementById('avatar-input').click()">📷</div>
+          <div class="profile-role-badge" title="${typeLabel}">${roleIcon}</div>
+          <div class="profile-avatar-overlay">📷</div>
         </div>
         <div style="flex:1">
           <div class="profile-name" id="profile-name-display">${name}</div>
           <div class="profile-badges"><span class="badge badge-blue">${typeLabel}</span></div>
           <p class="profile-bio" id="profile-bio-display">${p?.bio || 'Nenhuma descrição adicionada ainda.'}</p>
           <div class="profile-details">
-            ${p?.city ? `<div class="profile-detail">📍 ${p.city}</div>` : ''}
-            ${p?.phone ? `<div class="profile-detail">📱 ${p.phone}</div>` : ''}
-            <div class="profile-detail">✉️ ${state.user?.email || ''}</div>
+            ${detailsHtml}
           </div>
         </div>
       </div>
     </div>
     <div class="stats-grid">
-      ${[{ l: 'Visualizações', v: p?.views || 0, i: '👁️' }, { l: 'Contatos', v: p?.contacts || 0, i: '📱' }, { l: 'Avaliações', v: p?.rating_count || 0, i: '⭐' }, { l: 'Salvos', v: p?.saves || 0, i: '🔖' }].map(s => `<div class="stat-box"><div style="font-size:22px;margin-bottom:4px">${s.i}</div><div class="stat-box-val">${s.v}</div><div class="stat-box-lbl">${s.l}</div></div>`).join('')}
+      ${statsConfig.map(s => `
+        <div class="stat-box stat-${s.color}">
+          <div class="stat-icon-circle">${s.svg}</div>
+          <div class="stat-box-val">${s.value}</div>
+          <div class="stat-box-lbl">${s.label}</div>
+        </div>
+      `).join('')}
     </div>
     <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:20px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
@@ -1709,7 +2380,7 @@ const renders = {
 
   // --- PUBLICATIONS ---
   publications: async (c) => {
-    c.innerHTML = `<div style="max-width:640px">
+    c.innerHTML = `<div style="width:100%">
     <div class="page-header">
       <div><div class="page-title">Publicações</div><div class="page-sub">Gerencie suas publicações</div></div>
       <button class="btn btn-primary btn-sm" onclick="openNewPublication()">+ Nova publicação</button>
@@ -1742,7 +2413,7 @@ const renders = {
   // --- PERFORMANCE ---
   performance: async (c) => {
     const p = state.profile;
-    c.innerHTML = `<div style="max-width:780px">
+    c.innerHTML = `<div style="width:100%">
     <div><div class="page-title">Desempenho</div><div class="page-sub" style="margin-bottom:24px">Acompanhe suas métricas</div></div>
     <div class="stats-grid" style="margin-bottom:16px">
       ${[{ t: 'Visualizações', v: p?.views || 0, i: '👁️', c: 'var(--brand)' }, { t: 'Contatos', v: p?.contacts || 0, i: '📱', c: 'var(--accent)' }, { t: 'Avaliações', v: p?.rating_count || 0, i: '⭐', c: 'var(--warning)' }, { t: 'Curtidas', v: p?.likes || 0, i: '❤️', c: 'var(--danger)' }].map(s => `<div class="stat-box"><div style="font-size:24px;color:${s.c};margin-bottom:4px">${s.i}</div><div class="stat-box-val">${s.v}</div><div class="stat-box-lbl">${s.t}</div></div>`).join('')}
@@ -1761,7 +2432,7 @@ const renders = {
 
   // --- NOTIFICATIONS ---
   notifications: async (c) => {
-    c.innerHTML = `<div style="max-width:600px">
+    c.innerHTML = `<div style="width:100%">
     <div class="page-header">
       <div><div class="page-title">Notificações</div><div class="page-sub" id="notif-count-sub">Carregando...</div></div>
       <button class="btn btn-outline btn-sm" onclick="markAllRead()">✓ Marcar todas lidas</button>
@@ -1774,7 +2445,7 @@ const renders = {
   // --- SETTINGS ---
   settings: (c) => {
     const p = state.profile;
-    c.innerHTML = `<div style="max-width:580px">
+    c.innerHTML = `<div style="width:100%">
     <div><div class="page-title">Configurações</div><div class="page-sub" style="margin-bottom:24px">Gerencie sua conta</div></div>
     <div class="settings-list">
       <div class="settings-item" onclick="openEditName()"><div class="settings-icon">👤</div><div class="settings-text"><h3>Editar nome</h3><p>Altere seu nome de exibição</p></div><div class="settings-arrow">›</div></div>
@@ -1789,7 +2460,7 @@ const renders = {
 
   // --- HELP ---
   help: (c) => {
-    c.innerHTML = `<div style="max-width:620px">
+    c.innerHTML = `<div style="width:100%">
     <div><div class="page-title">Central de Ajuda</div><div class="page-sub" style="margin-bottom:24px">Perguntas frequentes</div></div>
     ${[
         { q: 'Como cadastrar um serviço?', a: 'Acesse "Meu Perfil", clique em "Editar" e adicione suas informações. Com o perfil de Prestador, você aparece automaticamente na seção de Serviços.' },
@@ -1919,7 +2590,18 @@ async function loadMyPublications() {
   const cont = document.getElementById('my-pubs-preview');
   if (!cont) return;
   if (!data || data.length === 0) {
-    cont.innerHTML = `<div style="text-align:center;padding:32px 0;color:var(--text2);font-size:14px">Nenhuma publicação ainda.</div>`;
+    cont.innerHTML = `
+      <div class="pubs-empty-state">
+        <div class="empty-state-icon-wrap">
+          <svg xmlns="http://www.w3.org/2000/svg" width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/>
+            <path d="M3.3 7 12 12l8.7-5"/>
+            <path d="M12 22V12"/>
+          </svg>
+        </div>
+        <p class="empty-state-text">Nenhuma publicação ainda.</p>
+      </div>
+    `;
   } else {
     cont.innerHTML = data.map(p => pubCard(p)).join('');
   }
@@ -2050,19 +2732,415 @@ function classifiedCard(cl) {
   </div>`;
 }
 
-function videoCard(v) {
+function videoCard(v, idx) {
   const p = v.profiles || {};
   const author = p.full_name || 'Usuário';
-  return `<div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;cursor:pointer;transition:box-shadow .15s" onmouseover="this.style.boxShadow='0 4px 16px rgba(0,0,0,.1)'" onmouseout="this.style.boxShadow=''">
-    <div style="height:150px;background:linear-gradient(135deg,rgba(37,99,235,.15),rgba(14,165,233,.1));display:flex;align-items:center;justify-content:center;position:relative">
-      ${v.thumbnail_url ? `<img src="${v.thumbnail_url}" alt="" style="width:100%;height:100%;object-fit:cover;position:absolute;inset:0"/>` : ''}
-      <div style="position:relative;width:50px;height:50px;border-radius:50%;background:rgba(255,255,255,.9);display:flex;align-items:center;justify-content:center;font-size:22px;box-shadow:0 2px 8px rgba(0,0,0,.15)">▶️</div>
+  const thumbBg = v.thumbnail_url
+    ? `background-image:url('${v.thumbnail_url}');background-size:cover;background-position:center`
+    : `background:linear-gradient(135deg,rgba(37,99,235,.18),rgba(14,165,233,.12))`;
+  return `<div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;cursor:pointer;transition:box-shadow .2s,transform .2s" onmouseover="this.style.boxShadow='0 8px 24px rgba(0,0,0,.12)';this.style.transform='translateY(-2px)'" onmouseout="this.style.boxShadow='';this.style.transform=''" onclick="openTikTokViewer(${idx})">
+    <div style="height:160px;${thumbBg};display:flex;align-items:center;justify-content:center;position:relative">
+      <div style="position:absolute;inset:0;background:rgba(0,0,0,.15)"></div>
+      <div style="position:relative;width:52px;height:52px;border-radius:50%;background:rgba(255,255,255,.92);display:flex;align-items:center;justify-content:center;font-size:22px;box-shadow:0 4px 12px rgba(0,0,0,.25);transition:transform .15s" onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform=''">▶️</div>
     </div>
-    <div style="padding:12px">
-      <p style="font-size:14px;font-weight:600;margin-bottom:4px;line-height:1.4">${escHtml(v.title || '')}</p>
+    <div style="padding:12px 14px">
+      <p style="font-size:14px;font-weight:600;margin-bottom:4px;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(v.title || '')}</p>
       <p style="font-size:12px;color:var(--text2)">${escHtml(author)} · ${v.views_count || 0} visualizações</p>
     </div>
   </div>`;
+}
+
+// =============================================
+// TIKTOK FULLSCREEN VIEWER
+// =============================================
+function openTikTokViewer(startIdx) {
+  const videos = window._tiktokVideos || [];
+  if (!videos.length) return;
+
+  // Remove existing viewer if any
+  const existing = document.getElementById('tiktok-viewer-overlay');
+  if (existing) existing.remove();
+
+  // Lock body scroll
+  document.body.style.overflow = 'hidden';
+
+  const overlay = document.createElement('div');
+  overlay.id = 'tiktok-viewer-overlay';
+  overlay.style.cssText = `
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: #000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: tkFadeIn .25s ease;
+  `;
+
+  // Build inner HTML
+  overlay.innerHTML = `
+    <style>
+      @keyframes tkFadeIn { from { opacity:0 } to { opacity:1 } }
+      #tiktok-scroll::-webkit-scrollbar { display: none; }
+      #tiktok-scroll { scrollbar-width: none; }
+      .tk-slide { scroll-snap-align: start; flex-shrink: 0; }
+    </style>
+
+    <!-- Back button -->
+    <button onclick="closeTikTokViewer()" style="
+      position: fixed;
+      top: 20px;
+      left: 20px;
+      z-index: 10001;
+      background: rgba(0,0,0,.65);
+      border: 1.5px solid rgba(255,255,255,.2);
+      color: #fff;
+      border-radius: 50px;
+      padding: 8px 18px 8px 14px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      backdrop-filter: blur(8px);
+      transition: background .2s;
+    " onmouseover="this.style.background='rgba(255,255,255,.15)'" onmouseout="this.style.background='rgba(0,0,0,.65)'">
+      ← Voltar
+    </button>
+
+    <!-- Centered phone column -->
+    <div style="position:relative;display:flex;align-items:center;gap:24px;height:100vh">
+
+      <!-- Video scroll column -->
+      <div id="tiktok-scroll" style="
+        width: min(420px, 100vw);
+        height: 100vh;
+        overflow-y: scroll;
+        scroll-snap-type: y mandatory;
+        -webkit-overflow-scrolling: touch;
+        position: relative;
+      ">
+        ${videos.map((v, idx) => buildTkSlide(v, idx)).join('')}
+      </div>
+
+      <!-- Right action bar (desktop) -->
+      <div id="tk-action-bar" style="display:flex;flex-direction:column;align-items:center;gap:24px;padding:16px 0">
+        <button onclick="openUploadVideo()" title="Publicar vídeo" style="
+          width: 52px; height: 52px; border-radius: 50%;
+          background: var(--brand); color: #fff; border: none; cursor: pointer;
+          font-size: 22px; display:flex;align-items:center;justify-content:center;
+          box-shadow: 0 4px 16px rgba(79,70,229,.4); transition: transform .2s;
+        " onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform=''">＋</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+
+  // Scroll to the clicked video
+  requestAnimationFrame(() => {
+    const scroll = document.getElementById('tiktok-scroll');
+    if (scroll && startIdx > 0) {
+      scroll.scrollTop = startIdx * window.innerHeight;
+    }
+
+    // Auto-play / pause with IntersectionObserver
+    const videoEls = overlay.querySelectorAll('.tk-native-video');
+    if (videoEls.length) {
+      const io = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) entry.target.play().catch(() => {});
+          else entry.target.pause();
+        });
+      }, { threshold: 0.6, root: document.getElementById('tiktok-scroll') });
+      videoEls.forEach(el => io.observe(el));
+    }
+  });
+}
+
+function buildTkSlide(v, idx) {
+  const author = (v.profiles && v.profiles.full_name) || 'Usuário';
+  const avatarUrl = v.profiles && v.profiles.avatar_url;
+  const avatarHtml = avatarUrl
+    ? `<img src="${avatarUrl}" style="width:100%;height:100%;object-fit:cover;border-radius:50%"/>`
+    : `<span style="font-size:18px;font-weight:700;color:#fff">${escHtml(author.charAt(0).toUpperCase())}</span>`;
+  const url = v.video_url || '';
+  const title = escHtml(v.title || '');
+  const desc = escHtml(v.description || '');
+
+  let mediaHtml = '';
+  if (!url) {
+    mediaHtml = `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px;color:#666"><div style="font-size:52px">📹</div><p>Vídeo indisponível</p></div>`;
+  } else if (/youtube\.com|youtu\.be/.test(url)) {
+    const ytMatch = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&?/]+)/);
+    const videoId = ytMatch ? ytMatch[1] : '';
+    mediaHtml = videoId
+      ? `<iframe src="https://www.youtube.com/embed/${videoId}?autoplay=1&mute=1&loop=1&playlist=${videoId}&controls=1&rel=0" frameborder="0" allow="autoplay;encrypted-media" allowfullscreen style="position:absolute;inset:0;width:100%;height:100%;border:none"></iframe>`
+      : `<div style="color:#666;padding:32px;text-align:center">Link inválido</div>`;
+  } else if (/drive\.google\.com/.test(url)) {
+    const driveMatch = url.match(/\/d\/([^/]+)/);
+    const fileId = driveMatch ? driveMatch[1] : '';
+    mediaHtml = fileId
+      ? `<iframe src="https://drive.google.com/file/d/${fileId}/preview" frameborder="0" allow="autoplay" style="position:absolute;inset:0;width:100%;height:100%;border:none"></iframe>`
+      : `<div style="color:#666;padding:32px;text-align:center">Link inválido</div>`;
+  } else {
+    const mime = url.startsWith('data:') ? url.split(';')[0].replace('data:', '') : 'video/mp4';
+    mediaHtml = `<video class="tk-native-video" loop playsinline preload="metadata"
+      style="position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block;cursor:pointer;background:#000"
+      onclick="this.paused ? this.play() : this.pause()">
+      <source src="${url}" type="${mime}">
+    </video>`;
+  }
+
+  return `<div class="tk-slide" style="
+    position: relative;
+    width: 100%;
+    height: 100vh;
+    background: #0a0a0a;
+    overflow: hidden;
+  ">
+    <!-- Media -->
+    <div style="position:absolute;inset:0">${mediaHtml}</div>
+
+    <!-- Bottom gradient -->
+    <div style="position:absolute;bottom:0;left:0;right:0;height:55%;background:linear-gradient(to top,rgba(0,0,0,.88) 0%,rgba(0,0,0,.2) 65%,transparent 100%);pointer-events:none"></div>
+
+    <!-- Right actions -->
+    <div style="position:absolute;right:12px;bottom:100px;display:flex;flex-direction:column;align-items:center;gap:20px;z-index:5">
+      <div style="position:relative">
+        <div style="width:46px;height:46px;border-radius:50%;background:rgba(255,255,255,.15);display:flex;align-items:center;justify-content:center;overflow:hidden;border:2px solid rgba(255,255,255,.6);backdrop-filter:blur(4px)">
+          ${avatarHtml}
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer" onclick="tiktokLike(this)">
+        <div style="width:42px;height:42px;border-radius:50%;background:rgba(255,255,255,.15);display:flex;align-items:center;justify-content:center;font-size:20px;backdrop-filter:blur(4px);transition:transform .15s">❤️</div>
+        <span style="font-size:11px;color:#fff;font-weight:600">${v.likes_count || 0}</span>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer">
+        <div style="width:42px;height:42px;border-radius:50%;background:rgba(255,255,255,.15);display:flex;align-items:center;justify-content:center;font-size:20px;backdrop-filter:blur(4px)">💬</div>
+        <span style="font-size:11px;color:#fff;font-weight:600">0</span>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer" onclick="tiktokShare('${escAttr(v.title || '')}','${escAttr(url)}')">
+        <div style="width:42px;height:42px;border-radius:50%;background:rgba(255,255,255,.15);display:flex;align-items:center;justify-content:center;font-size:20px;backdrop-filter:blur(4px)">↗️</div>
+        <span style="font-size:11px;color:#fff;font-weight:600">Share</span>
+      </div>
+    </div>
+
+    <!-- Bottom info -->
+    <div style="position:absolute;bottom:20px;left:14px;right:70px;z-index:5">
+      <p style="font-size:13px;font-weight:700;color:rgba(255,255,255,.9);margin-bottom:4px">@${escHtml(author)}</p>
+      <p style="font-size:14px;font-weight:600;color:#fff;margin-bottom:4px;line-height:1.3">${title}</p>
+      ${desc ? `<p style="font-size:12px;color:rgba(255,255,255,.75);line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${desc}</p>` : ''}
+    </div>
+
+    <!-- Video number indicator -->
+    <div style="position:absolute;top:70px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.45);backdrop-filter:blur(6px);border-radius:99px;padding:3px 10px;font-size:11px;color:rgba(255,255,255,.7)">${idx + 1} / ${(window._tiktokVideos||[]).length}</div>
+  </div>`;
+}
+
+function closeTikTokViewer() {
+  const overlay = document.getElementById('tiktok-viewer-overlay');
+  if (overlay) {
+    overlay.style.animation = 'tkFadeIn .2s ease reverse';
+    setTimeout(() => overlay.remove(), 200);
+  }
+  document.body.style.overflow = '';
+}
+
+
+
+// =============================================
+// TIKTOK VIDEO ITEM
+// =============================================
+function tiktokVideoItem(v, idx) {
+  const author = (v.profiles && v.profiles.full_name) || 'Usuário';
+  const avatarUrl = v.profiles && v.profiles.avatar_url;
+  const avatarHtml = avatarUrl
+    ? `<img src="${avatarUrl}" style="width:100%;height:100%;object-fit:cover;border-radius:50%"/>`
+    : `<span style="font-size:16px;font-weight:700">${escHtml(author.charAt(0).toUpperCase())}</span>`;
+  const url = v.video_url || '';
+  const title = escHtml(v.title || '');
+  const desc = escHtml(v.description || '');
+
+  // Build the video player element
+  let mediaHtml = '';
+  if (!url) {
+    mediaHtml = `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:#111;color:#888;flex-direction:column;gap:12px">
+      <div style="font-size:56px">📹</div><p>Vídeo indisponível</p>
+    </div>`;
+  } else if (/youtube\.com|youtu\.be/.test(url)) {
+    const ytMatch = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&?/]+)/);
+    const videoId = ytMatch ? ytMatch[1] : '';
+    mediaHtml = videoId
+      ? `<iframe src="https://www.youtube.com/embed/${videoId}?autoplay=1&mute=1&loop=1&playlist=${videoId}&controls=1" frameborder="0" allow="autoplay;encrypted-media" allowfullscreen style="width:100%;height:100%;object-fit:cover"></iframe>`
+      : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:#111;color:#888">Link inválido</div>`;
+  } else if (/drive\.google\.com/.test(url)) {
+    const driveMatch = url.match(/\/d\/([^/]+)/);
+    const fileId = driveMatch ? driveMatch[1] : '';
+    mediaHtml = fileId
+      ? `<iframe src="https://drive.google.com/file/d/${fileId}/preview" frameborder="0" allow="autoplay" style="width:100%;height:100%;border:none"></iframe>`
+      : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:#111;color:#888">Link inválido</div>`;
+  } else {
+    // Native <video> — handles mp4, webm, base64
+    const mime = url.startsWith('data:') ? url.split(';')[0].replace('data:', '') : 'video/mp4';
+    mediaHtml = `<video class="tiktok-video-el" loop playsinline preload="metadata"
+      style="width:100%;height:100%;object-fit:cover;display:block"
+      onclick="this.paused ? this.play() : this.pause()">
+      <source src="${url}" type="${mime}">
+    </video>`;
+  }
+
+  return `<div class="tiktok-item" data-idx="${idx}" style="
+    position: relative;
+    height: calc(100vh - 60px);
+    width: 100%;
+    scroll-snap-align: start;
+    overflow: hidden;
+    background: #000;
+    flex-shrink: 0;
+  ">
+    <!-- Media layer -->
+    <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center">
+      ${mediaHtml}
+    </div>
+
+    <!-- Gradient overlay bottom -->
+    <div style="position:absolute;bottom:0;left:0;right:0;height:65%;background:linear-gradient(to top,rgba(0,0,0,.85) 0%,rgba(0,0,0,.3) 60%,transparent 100%);pointer-events:none"></div>
+
+    <!-- Right actions bar -->
+    <div style="position:absolute;right:16px;bottom:120px;display:flex;flex-direction:column;align-items:center;gap:20px;z-index:10">
+      <!-- Avatar -->
+      <div style="position:relative">
+        <div style="width:48px;height:48px;border-radius:50%;background:var(--brand);color:#fff;display:flex;align-items:center;justify-content:center;border:2px solid #fff;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,.4)">
+          ${avatarHtml}
+        </div>
+        <div style="position:absolute;bottom:-10px;left:50%;transform:translateX(-50%);width:20px;height:20px;border-radius:50%;background:var(--brand);display:flex;align-items:center;justify-content:center;font-size:11px;color:#fff;border:2px solid #000">+</div>
+      </div>
+      <!-- Like -->
+      <div style="display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer" onclick="tiktokLike(this)">
+        <div style="width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,.15);display:flex;align-items:center;justify-content:center;font-size:22px;backdrop-filter:blur(4px)">❤️</div>
+        <span style="font-size:12px;color:#fff;font-weight:600">${v.likes_count || 0}</span>
+      </div>
+      <!-- Comment -->
+      <div style="display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer">
+        <div style="width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,.15);display:flex;align-items:center;justify-content:center;font-size:22px;backdrop-filter:blur(4px)">💬</div>
+        <span style="font-size:12px;color:#fff;font-weight:600">0</span>
+      </div>
+      <!-- Share -->
+      <div style="display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer" onclick="tiktokShare('${escAttr(v.title || '')}','${escAttr(url)}')">
+        <div style="width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,.15);display:flex;align-items:center;justify-content:center;font-size:22px;backdrop-filter:blur(4px)">↗️</div>
+        <span style="font-size:12px;color:#fff;font-weight:600">Compartilhar</span>
+      </div>
+    </div>
+
+    <!-- Bottom info -->
+    <div style="position:absolute;bottom:24px;left:16px;right:76px;z-index:10">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+        <span style="font-size:14px;font-weight:700;color:#fff">@${escHtml(author)}</span>
+      </div>
+      <p style="font-size:15px;font-weight:600;color:#fff;margin-bottom:4px;line-height:1.3">${title}</p>
+      ${desc ? `<p style="font-size:13px;color:rgba(255,255,255,.8);line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${desc}</p>` : ''}
+    </div>
+  </div>`;
+}
+
+function tiktokLike(btn) {
+  const heart = btn.querySelector('div');
+  const count = btn.querySelector('span');
+  const liked = btn.dataset.liked === '1';
+  btn.dataset.liked = liked ? '0' : '1';
+  heart.textContent = liked ? '❤️' : '🩷';
+  count.textContent = Math.max(0, parseInt(count.textContent || '0') + (liked ? -1 : 1));
+  heart.style.transform = 'scale(1.35)';
+  setTimeout(() => heart.style.transform = '', 200);
+}
+
+function tiktokShare(title, url) {
+  if (navigator.share) {
+    navigator.share({ title: title || 'Vídeo IAA', url: url || location.href }).catch(() => {});
+  } else {
+    navigator.clipboard.writeText(url || location.href).then(() => showToast('Link copiado!')).catch(() => showToast('Não foi possível compartilhar'));
+  }
+}
+
+// Restore dash-content defaults when leaving TikTok mode
+function resetDashContent() {
+  const c = document.getElementById('user-content') || document.getElementById('prestador-content') || document.getElementById('empresa-content');
+  if (c) {
+    c.style.padding = '';
+    c.style.maxWidth = '';
+    c.style.overflow = '';
+  }
+}
+
+function openVideoPlayer(dataStr) {
+  let v = dataStr;
+  if (typeof v === 'string') { try { v = JSON.parse(v); } catch (e) { return; } }
+
+  const title = v.title || 'Vídeo';
+  const url = v.video_url || '';
+  const desc = v.description || '';
+  const author = (v.profiles && v.profiles.full_name) || 'Usuário';
+
+  let playerHtml = '';
+
+  if (!url) {
+    playerHtml = `<div style="text-align:center;padding:40px;color:var(--text2)">
+      <div style="font-size:48px;margin-bottom:12px">📹</div>
+      <p>URL do vídeo não disponível.</p>
+    </div>`;
+  } else if (/youtube\.com|youtu\.be/.test(url)) {
+    // YouTube embed
+    let videoId = '';
+    const ytMatch = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&?/]+)/);
+    if (ytMatch) videoId = ytMatch[1];
+    if (videoId) {
+      playerHtml = `<div style="position:relative;padding-bottom:56.25%;height:0;border-radius:var(--radius-sm);overflow:hidden">
+        <iframe src="https://www.youtube.com/embed/${videoId}?autoplay=1" frameborder="0" allow="accelerometer;autoplay;clipboard-write;encrypted-media;gyroscope;picture-in-picture" allowfullscreen style="position:absolute;inset:0;width:100%;height:100%"></iframe>
+      </div>`;
+    } else {
+      playerHtml = `<p style="color:var(--text2);font-size:13px">Não foi possível carregar o vídeo do YouTube.</p>`;
+    }
+  } else if (/drive\.google\.com/.test(url)) {
+    // Google Drive embed
+    const driveMatch = url.match(/\/d\/([^/]+)/);
+    const fileId = driveMatch ? driveMatch[1] : '';
+    if (fileId) {
+      playerHtml = `<div style="position:relative;padding-bottom:56.25%;height:0;border-radius:var(--radius-sm);overflow:hidden">
+        <iframe src="https://drive.google.com/file/d/${fileId}/preview" frameborder="0" allow="autoplay" style="position:absolute;inset:0;width:100%;height:100%"></iframe>
+      </div>`;
+    } else {
+      playerHtml = `<a href="${escHtml(url)}" target="_blank" class="btn btn-primary btn-sm">▶️ Abrir no Google Drive</a>`;
+    }
+  } else if (url.startsWith('data:video/') || /\.(mp4|webm|ogg|mov)(\?|$)/i.test(url)) {
+    // Direct video file or base64
+    playerHtml = `<div style="border-radius:var(--radius-sm);overflow:hidden;background:#000">
+      <video controls autoplay style="width:100%;max-height:420px;display:block" preload="metadata">
+        <source src="${url}" type="${url.startsWith('data:') ? url.split(';')[0].replace('data:', '') : 'video/mp4'}">
+        Seu navegador não suporta reprodução de vídeo.
+      </video>
+    </div>`;
+  } else {
+    // Generic URL fallback — show a link
+    playerHtml = `<div style="text-align:center;padding:24px">
+      <p style="font-size:14px;color:var(--text2);margin-bottom:16px">Clique para abrir o vídeo externamente:</p>
+      <a href="${escHtml(url)}" target="_blank" rel="noopener" class="btn btn-primary">▶️ Assistir vídeo</a>
+    </div>`;
+  }
+
+  const metaHtml = desc
+    ? `<p style="font-size:13px;color:var(--text2);margin-top:14px;line-height:1.6">${escHtml(desc)}</p>`
+    : '';
+
+  openModal(title, `
+    ${playerHtml}
+    <div style="margin-top:12px;display:flex;align-items:center;gap:8px">
+      <div style="width:28px;height:28px;border-radius:50%;background:var(--brand);color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0">${escHtml(author.charAt(0).toUpperCase())}</div>
+      <span style="font-size:13px;font-weight:600;color:var(--text)">${escHtml(author)}</span>
+    </div>
+    ${metaHtml}
+  `, `<button class="btn btn-outline btn-sm" onclick="closeModal()">Fechar</button>`);
 }
 
 function photoCard(ph) {
@@ -2432,9 +3510,45 @@ async function saveVideo() {
   const title = document.getElementById('vid-title')?.value.trim();
   if (!title) { showToast('Digite o título do vídeo.'); return; }
 
-  // Modo local: salvar no localStorage
+  const fileInput = document.getElementById('vid-file');
+  let video_url = document.getElementById('vid-url')?.value.trim() || '';
+
+  // Modo local: salvar no IndexedDB
   if (useLocalMode || !db) {
-    const video_url = document.getElementById('vid-url')?.value.trim() || '';
+    if (fileInput && fileInput.files && fileInput.files[0]) {
+      const file = fileInput.files[0];
+      if (file.size > 100 * 1024 * 1024) { // 100MB limit for local mode
+        showToast('⚠️ No modo offline, limite de vídeo é 100MB.');
+        return;
+      }
+      
+      const btn = document.getElementById('btn-save-video');
+      if (btn) { btn.disabled = true; btn.textContent = 'Enviando...'; }
+      
+      try {
+        const newVideo = {
+          id: 'vid_' + Date.now(),
+          user_id: state.user.id,
+          title,
+          description: document.getElementById('vid-desc')?.value.trim() || '',
+          video_url: '',
+          video_file: file,
+          created_at: new Date().toISOString(),
+        };
+        await localDB.saveVideo(newVideo);
+        closeModal();
+        showToast('Vídeo publicado localmente!');
+        goDash('videos');
+      } catch (err) {
+        console.error(err);
+        showToast('Erro ao salvar vídeo offline.');
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = 'Publicar'; }
+      }
+      return;
+    }
+
+    if (!video_url) { showToast('Selecione um arquivo ou cole a URL.'); return; }
     const newVideo = {
       id: 'vid_' + Date.now(),
       user_id: state.user.id,
@@ -2443,15 +3557,12 @@ async function saveVideo() {
       video_url,
       created_at: new Date().toISOString(),
     };
-    localDB.saveVideo(newVideo);
+    await localDB.saveVideo(newVideo);
     closeModal();
     showToast('Vídeo publicado!');
     goDash('videos');
     return;
   }
-
-  const fileInput = document.getElementById('vid-file');
-  let video_url = document.getElementById('vid-url')?.value.trim();
 
   if ((!fileInput || !fileInput.files[0]) && !video_url) {
     showToast('Selecione um arquivo ou preencha a URL.');
@@ -2470,7 +3581,7 @@ async function saveVideo() {
         return;
       }
       const ext = file.name.split('.').pop();
-      const filePath = `${state.user.id}/videos/${Date.now()}.${ext}`;
+      const filePath = `${state.user.id}/video_${Date.now()}.${ext}`;
 
       showToast('Fazendo upload do vídeo...');
       const { error: uploadErr } = await db.storage.from('profiles').upload(filePath, file, { upsert: true });
@@ -2514,10 +3625,45 @@ function openUploadPhoto() {
 
 async function savePhoto() {
   if (!state.user) return;
-  // Modo local
+  
+  const fileInput = document.getElementById('photo-file');
+  let photo_url = document.getElementById('photo-url')?.value.trim() || '';
+
+  // Modo local (com suporte a arquivo local no IndexedDB)
   if (useLocalMode || !db) {
-    const photo_url = document.getElementById('photo-url')?.value.trim() || '';
-    if (!photo_url) { showToast('Cole a URL de uma imagem.'); return; }
+    if (fileInput && fileInput.files && fileInput.files[0]) {
+      const file = fileInput.files[0];
+      if (file.size > 20 * 1024 * 1024) { // 20MB limit
+        showToast('⚠️ No modo offline, limite de foto é 20MB.');
+        return;
+      }
+      
+      const btn = document.getElementById('btn-save-photo');
+      if (btn) { btn.disabled = true; btn.textContent = 'Enviando...'; }
+      
+      try {
+        const newPhoto = {
+          id: 'ph_' + Date.now(),
+          user_id: state.user.id,
+          caption: document.getElementById('photo-caption')?.value.trim() || '',
+          photo_url: '',
+          photo_file: file,
+          created_at: new Date().toISOString(),
+        };
+        await localDB.savePhoto(newPhoto);
+        closeModal();
+        showToast('Foto publicada localmente!');
+        goDash('photos');
+      } catch (err) {
+        console.error(err);
+        showToast('Erro ao salvar foto offline.');
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = 'Publicar'; }
+      }
+      return;
+    }
+
+    if (!photo_url) { showToast('Selecione uma foto ou cole a URL.'); return; }
     const newPhoto = {
       id: 'ph_' + Date.now(),
       user_id: state.user.id,
@@ -2525,15 +3671,12 @@ async function savePhoto() {
       photo_url,
       created_at: new Date().toISOString(),
     };
-    localDB.savePhoto(newPhoto);
+    await localDB.savePhoto(newPhoto);
     closeModal();
     showToast('Foto publicada!');
     goDash('photos');
     return;
   }
-
-  const fileInput = document.getElementById('photo-file');
-  let photo_url = document.getElementById('photo-url')?.value.trim();
 
   if ((!fileInput || !fileInput.files[0]) && !photo_url) {
     showToast('Selecione uma foto ou insira uma URL.');
@@ -2552,7 +3695,7 @@ async function savePhoto() {
         return;
       }
       const ext = file.name.split('.').pop();
-      const filePath = `${state.user.id}/photos/${Date.now()}.${ext}`;
+      const filePath = `${state.user.id}/photo_${Date.now()}.${ext}`;
 
       showToast('Fazendo upload...');
       const { error: uploadErr } = await db.storage.from('profiles').upload(filePath, file, { upsert: true });
@@ -2680,7 +3823,7 @@ function openEditProfile() {
 }
 
 async function saveProfile() {
-  if (!state.user || !db) return;
+  if (!state.user) return;
   const updates = {
     full_name: document.getElementById('ep-name')?.value.trim() || state.profile?.full_name,
     bio: document.getElementById('ep-bio')?.value.trim(),
@@ -2693,18 +3836,23 @@ async function saveProfile() {
   // Remove undefined keys
   Object.keys(updates).forEach(k => updates[k] === undefined && delete updates[k]);
 
-  try {
-    const { error } = await db.from('profiles').update(updates).eq('id', state.user.id);
-    if (error) { showToast('Erro: ' + error.message); return; }
+  // Atualizar estado local imediatamente
+  state.profile = { ...state.profile, ...updates };
+  localDB.saveProfile(state.profile);
 
-    state.profile = { ...state.profile, ...updates };
-    updateAvatarUI();
-    closeModal();
-    showToast('Perfil atualizado!');
-    goDash('profile');
-  } catch (err) {
-    showToast('Erro inesperado ao salvar perfil.');
+  if (!useLocalMode && db) {
+    try {
+      const { error } = await db.from('profiles').update(updates).eq('id', state.user.id);
+      if (error) { console.warn('Erro ao salvar no servidor:', error.message); }
+    } catch (err) {
+      console.warn('Erro inesperado ao salvar no servidor:', err.message);
+    }
   }
+
+  updateAvatarUI();
+  closeModal();
+  showToast('Perfil atualizado!');
+  goDash('profile');
 }
 
 function openNotifSettings() {
@@ -2755,7 +3903,7 @@ function togglePrivacy(el, key) { el.classList.toggle('on'); state.privacy[key] 
 // AVATAR UPLOAD
 // =============================================
 async function handleAvatarUpload(input) {
-  if (!input.files || !input.files[0] || !state.user || !db) return;
+  if (!input.files || !input.files[0] || !state.user) return;
   const file = input.files[0];
   if (file.size > 5 * 1024 * 1024) { showToast('Arquivo muito grande. Máximo 5MB.'); return; }
 
@@ -2763,24 +3911,54 @@ async function handleAvatarUpload(input) {
   const ext = file.name.split('.').pop();
   const filePath = `${state.user.id}/avatar.${ext}`;
 
-  try {
-    const { error: uploadErr } = await db.storage.from('profiles').upload(filePath, file, { upsert: true });
-    if (uploadErr) { showToast('Erro no upload: ' + uploadErr.message); return; }
+  // Tenta Supabase Storage primeiro (se disponível)
+  if (!useLocalMode && db) {
+    try {
+      const { error: uploadErr } = await db.storage.from('profiles').upload(filePath, file, { upsert: true });
+      if (!uploadErr) {
+        const { data: urlData } = db.storage.from('profiles').getPublicUrl(filePath);
+        const avatar_url = urlData.publicUrl + '?t=' + Date.now();
+        await db.from('profiles').update({ avatar_url, updated_at: new Date().toISOString() }).eq('id', state.user.id);
+        state.profile.avatar_url = avatar_url;
+        localDB.saveProfile({ ...state.profile, avatar_url });
+        updateAvatarUI();
+        const avatarDisp = document.getElementById('profile-avatar-display');
+        if (avatarDisp) avatarDisp.innerHTML = `<img src="${avatar_url}" alt=""/>`;
+        showToast('Foto de perfil atualizada! ✅');
+        // Reset input
+        input.value = '';
+        return;
+      }
+      console.warn('Supabase Storage falhou, usando fallback local:', uploadErr.message);
+    } catch (srvErr) {
+      console.warn('Falha no upload do avatar no servidor, caindo para modo local:', srvErr);
+    }
+  }
 
-    const { data: urlData } = db.storage.from('profiles').getPublicUrl(filePath);
-    const avatar_url = urlData.publicUrl + '?t=' + Date.now();
+  // Fallback: salvar em Base64 no localStorage
+  if (file.size > 3 * 1024 * 1024) {
+    showToast('⚠️ Modo offline: limite de 3MB para foto de perfil. Tente uma imagem menor.');
+    input.value = '';
+    return;
+  }
 
-    await db.from('profiles').update({ avatar_url, updated_at: new Date().toISOString() }).eq('id', state.user.id);
-    state.profile.avatar_url = avatar_url;
-
-    // Update UI
-    const avatarEl = document.getElementById('topbar-avatar');
-    if (avatarEl) avatarEl.innerHTML = `<img src="${avatar_url}" alt=""/>`;
-    const profileAvatar = document.getElementById('profile-avatar-display');
-    if (profileAvatar) profileAvatar.innerHTML = `<img src="${avatar_url}" alt=""/>`;
-
-    showToast('Foto atualizada!');
-  } catch (err) { showToast('Erro inesperado no upload'); }
+  showToast('Salvando foto localmente...');
+  const reader = new FileReader();
+  reader.onload = function (e) {
+    const localUrl = e.target.result;
+    state.profile = { ...state.profile, avatar_url: localUrl, updated_at: new Date().toISOString() };
+    localDB.saveProfile(state.profile);
+    updateAvatarUI();
+    const avatarDisp = document.getElementById('profile-avatar-display');
+    if (avatarDisp) avatarDisp.innerHTML = `<img src="${localUrl}" alt=""/>`;
+    showToast('Foto de perfil salva! ✅');
+    input.value = '';
+  };
+  reader.onerror = function () {
+    showToast('Erro ao ler a imagem. Tente outro arquivo.');
+    input.value = '';
+  };
+  reader.readAsDataURL(file);
 }
 
 // =============================================
@@ -2851,35 +4029,42 @@ function toggleHelp(i) {
 // =============================================
 async function loadLandingStats() {
   if (useLocalMode || !db) {
-    // Contar do localStorage
     updateLandingStatsFromLocal();
     return;
   }
-  const tables = [
-    { id: 'stat-services', table: 'profiles', filter: { profile_type: 'provider' } },
-    { id: 'stat-businesses', table: 'profiles', filter: { profile_type: 'business' } },
-    { id: 'stat-jobs', table: 'jobs' },
-    { id: 'stat-classifieds', table: 'classifieds' },
-  ];
-  for (const t of tables) {
-    try {
-      let query = db.from(t.table).select('*', { count: 'exact', head: true });
-      if (t.filter) Object.entries(t.filter).forEach(([k, v]) => { query = query.eq(k, v); });
-      // C5 — Timeout de 5s por query individual; se travar, setar 0 (não deixar —)
-      const { count, error } = await withTimeout(query, 5000);
-      if (error) { console.error('Erro ao contar', t.table, error); continue; }
-      const el = document.getElementById(t.id);
-      if (el) el.textContent = count !== null ? count : '0';
-    } catch (err) {
-      console.error('Erro ao carregar stats (' + t.id + '):', err.message || err);
-      // C5 — Timeout ou erro: exibir 0 em vez de deixar — preso
-      const el = document.getElementById(t.id);
-      if (el && (el.textContent === '—' || el.textContent === '')) {
-        el.textContent = '0';
-      }
-    }
+
+  try {
+    // C5 — Todas as queries em paralelo com timeout de 8s
+    const [provRes, bizRes, jobRes, clRes, servicePubRes] = await withTimeout(
+      Promise.all([
+        db.from('profiles').select('*', { count: 'exact', head: true }).eq('profile_type', 'provider'),
+        db.from('profiles').select('*', { count: 'exact', head: true }).eq('profile_type', 'business'),
+        db.from('jobs').select('*', { count: 'exact', head: true }),
+        db.from('classifieds').select('*', { count: 'exact', head: true }),
+        db.from('publications').select('*', { count: 'exact', head: true }).eq('type', 'service'),
+      ]),
+      8000
+    );
+
+    const setEl = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val ?? '0'; };
+
+    // Serviços = prestadores de perfil + publicações do tipo 'service'
+    const providerCount = provRes.count ?? 0;
+    const servicePubCount = servicePubRes.count ?? 0;
+    setEl('stat-services', providerCount + servicePubCount);
+    setEl('stat-businesses', bizRes.count ?? 0);
+    setEl('stat-jobs', jobRes.count ?? 0);
+    setEl('stat-classifieds', clRes.count ?? 0);
+
+  } catch (err) {
+    console.error('Erro ao carregar stats:', err.message || err);
+    // Fallback: exibir 0 em todos
+    ['stat-services', 'stat-businesses', 'stat-jobs', 'stat-classifieds'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el && (el.textContent === '—' || el.textContent === '')) el.textContent = '0';
+    });
   }
-  // Animar contadores mesmo que alguns tenham virado 0
+
   if (typeof window._retriggerStatCounters === 'function') {
     setTimeout(window._retriggerStatCounters, 150);
   }
@@ -2887,26 +4072,25 @@ async function loadLandingStats() {
 
 function updateLandingStatsFromLocal() {
   const profiles = localDB.getAllProfiles();
-  const services = profiles.filter(p => p.profile_type === 'provider').length;
+  const providerCount = profiles.filter(p => p.profile_type === 'provider').length;
   const businesses = profiles.filter(p => p.profile_type === 'business').length;
   const jobs = localDB.getJobs().length;
   const classifieds = localDB.getClassifieds().length;
 
-  // Also count publications by type as fallback
+  // Publicações por tipo (fallback adicional)
   const pubs = localDB.getPublications();
+  const servicePubs = pubs.filter(p => p.type === 'service').length;
   const jobPubs = pubs.filter(p => p.type === 'job').length;
   const clPubs = pubs.filter(p => p.type === 'classified').length;
 
-  const setEl = (id, val) => {
-    const el = document.getElementById(id);
-    if (el) el.textContent = val;
-  };
+  const setEl = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
 
-  setEl('stat-services', services);
+  // Serviços = perfis de prestador + publicações do tipo 'service'
+  setEl('stat-services', providerCount + servicePubs);
   setEl('stat-businesses', businesses);
   setEl('stat-jobs', jobs + jobPubs);
   setEl('stat-classifieds', classifieds + clPubs);
-  // Re-trigger counter animation after values are populated
+
   if (typeof window._retriggerStatCounters === 'function') {
     setTimeout(window._retriggerStatCounters, 150);
   }
@@ -3388,7 +4572,7 @@ setTimeout(() => {
   }
 
   // Called by loadLandingStats after values are set to re-trigger counters
-  window._retriggerStatCounters = function() {
+  window._retriggerStatCounters = function () {
     document.querySelectorAll('.stat-val').forEach(el => {
       delete el.dataset.animated;
       // Animar diretamente — no mobile o IntersectionObserver pode não disparar

@@ -2,7 +2,6 @@
 // PANEL PRESTADOR — Prestador de Serviço
 // =============================================
 const PanelPrestador = (function () {
-  let _initialized = false;
   let _currentSection = 'feed';
 
   const NAV_ITEMS = [
@@ -88,7 +87,6 @@ const PanelPrestador = (function () {
     },
 
     initWithSection(section) {
-      _initialized = true;
       _currentSection = section || 'feed';
       renderSidebar();
       renderTopbar();
@@ -100,6 +98,8 @@ const PanelPrestador = (function () {
       updateActiveNav();
       const content = document.getElementById('prestador-content');
       if (!content) return;
+      // Reset dash-content styles (may have been modified by TikTok video feed)
+      if (typeof resetDashContent === 'function') resetDashContent();
       if (typeof renders !== 'undefined' && renders[_currentSection]) {
         Promise.resolve(renders[_currentSection](content)).catch(err => {
           console.error('Erro ao renderizar seção', _currentSection, err);

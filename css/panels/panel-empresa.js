@@ -2,23 +2,22 @@
 // PANEL EMPRESA — Empresa / Comércio
 // =============================================
 const PanelEmpresa = (function () {
-  let _initialized = false;
   let _currentSection = 'feed';
 
   const NAV_ITEMS = [
-    { id: 'feed',          icon: '🏠', label: 'Início' },
-    { id: 'services',      icon: '🔧', label: 'Serviços' },
-    { id: 'businesses',    icon: '🏢', label: 'Empresas' },
-    { id: 'jobs',          icon: '💼', label: 'Vagas' },
-    { id: 'classifieds',   icon: '🏷️',  label: 'Classificados' },
-    { id: 'videos',        icon: '▶️',  label: 'Vídeos' },
-    { id: 'photos',        icon: '📷', label: 'Fotos' },
-    { id: 'profile',       icon: '👤', label: 'Perfil da Empresa' },
-    { id: 'publications',  icon: '📄', label: 'Publicações' },
-    { id: 'performance',   icon: '📊', label: 'Desempenho' },
+    { id: 'feed', icon: '🏠', label: 'Início' },
+    { id: 'services', icon: '🔧', label: 'Serviços' },
+    { id: 'businesses', icon: '🏢', label: 'Empresas' },
+    { id: 'jobs', icon: '💼', label: 'Vagas' },
+    { id: 'classifieds', icon: '🏷️', label: 'Classificados' },
+    { id: 'videos', icon: '▶️', label: 'Vídeos' },
+    { id: 'photos', icon: '📷', label: 'Fotos' },
+    { id: 'profile', icon: '👤', label: 'Perfil da Empresa' },
+    { id: 'publications', icon: '📄', label: 'Publicações' },
+    { id: 'performance', icon: '📊', label: 'Desempenho' },
     { id: 'notifications', icon: '🔔', label: 'Notificações' },
-    { id: 'settings',      icon: '⚙️', label: 'Configurações' },
-    { id: 'help',          icon: '❓', label: 'Ajuda' },
+    { id: 'settings', icon: '⚙️', label: 'Configurações' },
+    { id: 'help', icon: '❓', label: 'Ajuda' },
   ];
 
   function renderSidebar() {
@@ -37,8 +36,8 @@ const PanelEmpresa = (function () {
             <span class="nav-item-icon">${item.icon}</span>
             <span>${item.label}</span>
             ${item.id === 'notifications'
-              ? '<span id="notif-badge" style="display:none;background:var(--danger);color:#fff;border-radius:999px;font-size:10px;padding:1px 6px;margin-left:auto">●</span>'
-              : ''}
+        ? '<span id="notif-badge" style="display:none;background:var(--danger);color:#fff;border-radius:999px;font-size:10px;padding:1px 6px;margin-left:auto">●</span>'
+        : ''}
           </div>`).join('')}
       </nav>
       <div class="sidebar-footer">
@@ -88,7 +87,6 @@ const PanelEmpresa = (function () {
     },
 
     initWithSection(section) {
-      _initialized = true;
       _currentSection = section || 'feed';
       renderSidebar();
       renderTopbar();
@@ -100,6 +98,8 @@ const PanelEmpresa = (function () {
       updateActiveNav();
       const content = document.getElementById('empresa-content');
       if (!content) return;
+      // Reset dash-content styles (may have been modified by TikTok video feed)
+      if (typeof resetDashContent === 'function') resetDashContent();
       if (typeof renders !== 'undefined' && renders[_currentSection]) {
         Promise.resolve(renders[_currentSection](content)).catch(err => {
           console.error('Erro ao renderizar seção', _currentSection, err);

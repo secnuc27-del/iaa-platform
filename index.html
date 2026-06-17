@@ -27,13 +27,13 @@
      ============================================= -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
-  <link rel="stylesheet" href="style.css?v=13" />
-  <link rel="stylesheet" href="css/panel-usuario.css?v=1" />
-  <link rel="stylesheet" href="css/panel-prestador.css?v=1" />
-  <link rel="stylesheet" href="css/panel-empresa.css?v=1" />
+  <link rel="stylesheet" href="style.css?v=22" />
 </head>
 
 <body>
+
+  <!-- Cinematic page transition curtain -->
+  <div id="page-curtain"></div>
 
   <!-- App Loading -->
   <div id="app-loading">
@@ -46,11 +46,23 @@
      ============================================ -->
   <div id="landing" class="page">
     <nav class="nav">
-      <div class="nav-logo">
-        <img src="logo-iaa.png" alt="IAA" class="logo-img" style="height:38px;width:auto">
+      <div class="nav-logo" style="display:flex;align-items:center;gap:12px">
+        <img src="logo-iaa.png" alt="IAA" class="logo-img" style="height:30px;width:auto">
         <span class="logo-text">Interligação Alto Acre</span>
       </div>
       <div class="nav-btns">
+        <div class="theme-toggle" onclick="toggleTheme()" role="button" tabindex="0" aria-label="Alternar tema">
+          <div class="theme-toggle-track">
+            <div class="theme-toggle-handle">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="icon-moon"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="icon-sun"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
+            </div>
+            <div class="theme-toggle-bg-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="icon-sun"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="icon-moon"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+            </div>
+          </div>
+        </div>
         <button class="btn btn-ghost" onclick="showPage('login')">Acessar conta</button>
         <button class="btn btn-primary" onclick="requireLoginForPublish()">+ Publicar</button>
       </div>
@@ -163,6 +175,43 @@
         </div>
       </div>
     </div>
+    <!-- ============================================
+         SCROLL REEL TESTIMONIALS
+         ============================================ -->
+    <div class="section section-alt">
+      <div class="section-inner">
+        <div class="section-head">
+          <h2>O que dizem sobre nós</h2>
+          <p>Pessoas reais da região do Alto Acre</p>
+        </div>
+        <div class="scroll-reel-wrap" id="scroll-reel" role="region" aria-label="Depoimentos" tabindex="0">
+          <!-- Reel columns -->
+          <div class="scroll-reel-columns" aria-hidden="true">
+            <div class="scroll-reel-col" id="reel-col-left"></div>
+            <div class="scroll-reel-col" id="reel-col-mid"></div>
+            <div class="scroll-reel-col" id="reel-col-right"></div>
+          </div>
+          <!-- Content -->
+          <div class="scroll-reel-content">
+            <svg class="scroll-reel-quote-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M4.58 17.32C3.55 16.23 3 15 3 13.01c0-3.5 2.46-6.64 6.03-8.19l.9 1.38c-3.34 1.8-4 4.15-4.25 5.62.54-.28 1.24-.38 1.93-.31 1.8.17 3.23 1.65 3.23 3.49a3.5 3.5 0 0 1-3.5 3.5c-1.07 0-2.1-.49-2.75-1.18zm10 0C13.55 16.23 13 15 13 13.01c0-3.5 2.46-6.64 6.03-8.19l.9 1.38c-3.34 1.8-4 4.15-4.25 5.62.54-.28 1.24-.38 1.93-.31 1.8.17 3.23 1.65 3.23 3.49a3.5 3.5 0 0 1-3.5 3.5c-1.07 0-2.1-.49-2.75-1.18z"/>
+            </svg>
+            <div class="scroll-reel-text-stage" aria-live="polite">
+              <div class="scroll-reel-text-inner" id="reel-text"></div>
+            </div>
+            <div class="scroll-reel-controls">
+              <button class="reel-btn" id="reel-prev" aria-label="Depoimento anterior">
+                <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7.5 2.5 3.5 6l4 3.5"/></svg>
+              </button>
+              <button class="reel-btn" id="reel-next" aria-label="Próximo depoimento">
+                <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m4.5 2.5 4 3.5-4 3.5"/></svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div class="cta-section">
       <div class="cta-box gradient-brand">
         <h2>Entre, explore e encontre o que precisa</h2>
@@ -176,7 +225,7 @@
     <footer class="site-footer">
       <div class="footer-row">
         <div class="footer-brand">
-          <img src="logo-iaa.png" alt="IAA" class="logo-img" style="height:36px;width:auto">
+          <img src="logo-iaa.png" alt="IAA" class="logo-img" style="height:28px;width:auto">
           <span class="brand-name">Interligação Alto Acre</span>
           <span class="footer-sep">|</span>
           <span class="footer-dev">por <strong>Kaelvora</strong></span>
@@ -203,7 +252,7 @@
     <div class="info-modal-content">
       <button class="info-modal-close" onclick="closeInfoModal('modal-sobre')">✕</button>
       <div class="info-modal-header">
-        <img src="logo-iaa.png" alt="IAA" class="logo-img" style="height:48px;width:auto">
+        <img src="logo-iaa.png" alt="IAA" class="logo-img" style="height:40px;width:auto">
         <h2>Sobre o IAA</h2>
       </div>
       <div class="info-modal-body">
@@ -364,7 +413,7 @@
       <div class="auth-left gradient-brand">
         <div class="auth-left-inner">
           <img src="logo-iaa.png" alt="IAA" class="auth-left-logo-img"
-            style="height:72px;width:auto;filter:brightness(0) invert(1)">
+            style="height:60px;width:auto;filter:brightness(0) invert(1)">
           <h1>Bem-vindo de volta!</h1>
           <p>Entre na maior plataforma de conexão do Alto Acre.</p>
         </div>
@@ -372,7 +421,7 @@
       <div class="auth-right">
         <div class="auth-form-wrap">
           <div class="auth-form-logo">
-            <img src="logo-iaa.png" alt="IAA" class="logo-img" style="height:32px;width:auto"><span
+            <img src="logo-iaa.png" alt="IAA" class="logo-img" style="height:26px;width:auto"><span
               class="logo-text">Interligação Alto Acre</span>
           </div>
           <div class="auth-title">Entrar</div>
@@ -426,7 +475,7 @@
       <div class="auth-left gradient-brand">
         <div class="auth-left-inner">
           <img src="logo-iaa.png" alt="IAA" class="auth-left-logo-img"
-            style="height:72px;width:auto;filter:brightness(0) invert(1)">
+            style="height:60px;width:auto;filter:brightness(0) invert(1)">
           <h1>Comece gratuitamente</h1>
           <p>Junte-se à comunidade de Epitaciolândia e Brasiléia.</p>
         </div>
@@ -434,7 +483,7 @@
       <div class="auth-right">
         <div class="auth-form-wrap">
           <div class="auth-form-logo">
-            <img src="logo-iaa.png" alt="IAA" class="logo-img" style="height:32px;width:auto"><span
+            <img src="logo-iaa.png" alt="IAA" class="logo-img" style="height:26px;width:auto"><span
               class="logo-text">Interligação Alto Acre</span>
           </div>
           <div class="auth-title">Criar conta</div>
@@ -499,7 +548,7 @@
     <div style="width:100%;max-width:440px">
       <div style="text-align:center;margin-bottom:32px">
         <img src="logo-iaa.png" alt="IAA" class="logo-img"
-          style="height:48px;width:auto;margin:0 auto 16px;display:block">
+          style="height:40px;width:auto;margin:0 auto 16px;display:block">
         <div
           style="width:72px;height:72px;border-radius:50%;background:rgba(37,99,235,.1);display:flex;align-items:center;justify-content:center;font-size:32px;margin:0 auto 20px">
           ✉️</div>
@@ -519,6 +568,9 @@
       </div>
       <button class="btn btn-primary btn-full" id="verify-btn" onclick="verifyEmailCode()"
         style="margin-top:20px">Verificar código</button>
+      <div style="text-align:center;margin-top:14px;padding:8px 12px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.2);border-radius:8px">
+        <p style="font-size:12px;color:#d97706;margin:0;line-height:1.4">💡 <strong>Nota de Teste:</strong> Se o e-mail de confirmação demorar ou não chegar, você pode usar o código padrão <strong>123456</strong> para ativar a conta na mesma hora!</p>
+      </div>
       <div style="text-align:center;margin-top:20px">
         <p style="font-size:14px;color:var(--text2)" id="resend-text">Não recebeu? <button class="btn btn-ghost"
             id="resend-btn" onclick="resendCode()"
@@ -538,7 +590,7 @@
     <div style="width:100%;max-width:680px">
       <div style="text-align:center;margin-bottom:40px">
         <img src="logo-iaa.png" alt="IAA" class="logo-img"
-          style="height:48px;width:auto;margin:0 auto 16px;display:block">
+          style="height:40px;width:auto;margin:0 auto 16px;display:block">
         <h1 style="font-size:clamp(26px,4vw,36px);font-weight:800;margin-bottom:8px">Como você quer divulgar?</h1>
         <p style="color:var(--text2);font-size:16px">Escolha como vai aparecer na plataforma IAA</p>
       </div>
@@ -572,7 +624,7 @@
   <div id="complete-profile-user" class="page" style="min-height:100vh;display:none;align-items:center;justify-content:center;padding:32px 16px;background:var(--bg)">
     <div style="width:100%;max-width:520px">
       <div style="text-align:center;margin-bottom:32px">
-        <img src="logo-iaa.png" alt="IAA" class="logo-img" style="height:48px;width:auto;margin:0 auto 16px;display:block">
+        <img src="logo-iaa.png" alt="IAA" class="logo-img" style="height:40px;width:auto;margin:0 auto 16px;display:block">
         <h1 style="font-size:clamp(22px,4vw,30px);font-weight:800;margin-bottom:8px">Complete seu perfil</h1>
         <p style="color:var(--text2);font-size:15px">Conte-nos um pouco sobre você</p>
       </div>
@@ -590,7 +642,7 @@
   <div id="complete-profile-provider" class="page" style="min-height:100vh;display:none;align-items:center;justify-content:center;padding:32px 16px;background:var(--bg)">
     <div style="width:100%;max-width:600px">
       <div style="text-align:center;margin-bottom:32px">
-        <img src="logo-iaa.png" alt="IAA" class="logo-img" style="height:48px;width:auto;margin:0 auto 16px;display:block">
+        <img src="logo-iaa.png" alt="IAA" class="logo-img" style="height:40px;width:auto;margin:0 auto 16px;display:block">
         <h1 style="font-size:clamp(22px,4vw,30px);font-weight:800;margin-bottom:8px">Perfil Profissional</h1>
         <p style="color:var(--text2);font-size:15px">Configure seu perfil de prestador</p>
       </div>
@@ -619,7 +671,7 @@
   <div id="complete-profile-business" class="page" style="min-height:100vh;display:none;align-items:center;justify-content:center;padding:32px 16px;background:var(--bg)">
     <div style="width:100%;max-width:600px">
       <div style="text-align:center;margin-bottom:32px">
-        <img src="logo-iaa.png" alt="IAA" class="logo-img" style="height:48px;width:auto;margin:0 auto 16px;display:block">
+        <img src="logo-iaa.png" alt="IAA" class="logo-img" style="height:40px;width:auto;margin:0 auto 16px;display:block">
         <h1 style="font-size:clamp(22px,4vw,30px);font-weight:800;margin-bottom:8px">Perfil da Empresa</h1>
         <p style="color:var(--text2);font-size:15px">Configure a presença digital da sua empresa</p>
       </div>
@@ -646,38 +698,41 @@
   <!-- ============================================
      WELCOME SCREENS
      ============================================ -->
-  <div id="welcome-user" class="page" style="min-height:100vh;display:none;align-items:center;justify-content:center;padding:32px 16px;background:var(--bg)">
-    <div style="width:100%;max-width:520px;text-align:center">
-      <div style="font-size:72px;margin-bottom:20px">🎉</div>
-      <h1 style="font-size:clamp(24px,4vw,34px);font-weight:800;margin-bottom:12px">Seu perfil está pronto!</h1>
-      <p style="color:var(--text2);font-size:16px;line-height:1.7;margin-bottom:32px">Agora você já pode explorar serviços, empresas, vagas e descobrir novas oportunidades na região.</p>
-      <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap">
-        <button class="btn btn-primary btn-lg" onclick="enterPanel('user')">Explorar plataforma →</button>
-        <button class="btn btn-outline btn-lg" onclick="enterPanel('user','perfil')">Ver meu perfil</button>
+  <!-- ============================================
+     WELCOME PAGES
+     ============================================ -->
+  <div id="welcome-user" class="page welcome-page" style="display:none">
+    <div class="welcome-card">
+      <div class="welcome-icon">🎉</div>
+      <h1 class="welcome-title">Seu perfil está pronto!</h1>
+      <p class="welcome-subtitle">Agora você já pode explorar serviços, empresas, vagas e descobrir novas oportunidades na região.</p>
+      <div class="welcome-actions">
+        <button class="btn btn-primary" onclick="enterPanel('user')">Explorar plataforma →</button>
+        <button class="btn btn-outline" onclick="enterPanel('user','perfil')">Ver meu perfil</button>
       </div>
     </div>
   </div>
 
-  <div id="welcome-provider" class="page" style="min-height:100vh;display:none;align-items:center;justify-content:center;padding:32px 16px;background:var(--bg)">
-    <div style="width:100%;max-width:520px;text-align:center">
-      <div style="font-size:72px;margin-bottom:20px">🚀</div>
-      <h1 style="font-size:clamp(24px,4vw,34px);font-weight:800;margin-bottom:12px">Perfil profissional criado!</h1>
-      <p style="color:var(--text2);font-size:16px;line-height:1.7;margin-bottom:32px">Agora você já pode divulgar seu trabalho, publicar conteúdos e começar a receber contatos.</p>
-      <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap">
-        <button class="btn btn-primary btn-lg" onclick="enterPanel('provider')">Ir para meu painel →</button>
-        <button class="btn btn-outline btn-lg" onclick="enterPanel('provider','perfil-pro')">Completar perfil</button>
+  <div id="welcome-provider" class="page welcome-page" style="display:none">
+    <div class="welcome-card">
+      <div class="welcome-icon">🚀</div>
+      <h1 class="welcome-title">Perfil profissional criado!</h1>
+      <p class="welcome-subtitle">Agora você já pode divulgar seu trabalho, publicar conteúdos e começar a receber contatos.</p>
+      <div class="welcome-actions">
+        <button class="btn btn-primary" onclick="enterPanel('provider')">Ir para meu painel →</button>
+        <button class="btn btn-outline" onclick="enterPanel('provider','perfil-pro')">Completar perfil</button>
       </div>
     </div>
   </div>
 
-  <div id="welcome-business" class="page" style="min-height:100vh;display:none;align-items:center;justify-content:center;padding:32px 16px;background:var(--bg)">
-    <div style="width:100%;max-width:520px;text-align:center">
-      <div style="font-size:72px;margin-bottom:20px">🏢</div>
-      <h1 style="font-size:clamp(24px,4vw,34px);font-weight:800;margin-bottom:12px">Perfil da empresa pronto!</h1>
-      <p style="color:var(--text2);font-size:16px;line-height:1.7;margin-bottom:32px">Agora você já pode fortalecer sua presença digital, divulgar promoções, anunciar vagas e crescer dentro da plataforma.</p>
-      <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap">
-        <button class="btn btn-primary btn-lg" onclick="enterPanel('business')">Ir para painel da empresa →</button>
-        <button class="btn btn-outline btn-lg" onclick="enterPanel('business','promocoes')">Publicar promoção</button>
+  <div id="welcome-business" class="page welcome-page" style="display:none">
+    <div class="welcome-card">
+      <div class="welcome-icon">🏢</div>
+      <h1 class="welcome-title">Perfil da empresa pronto!</h1>
+      <p class="welcome-subtitle">Agora você já pode fortalecer sua presença digital, divulgar promoções, anunciar vagas e crescer dentro da plataforma.</p>
+      <div class="welcome-actions">
+        <button class="btn btn-primary" onclick="enterPanel('business')">Ir para painel da empresa →</button>
+        <button class="btn btn-outline" onclick="enterPanel('business','promocoes')">Publicar promoção</button>
       </div>
     </div>
   </div>
@@ -728,17 +783,33 @@
   <div id="explore" class="page">
     <!-- Navbar da área pública -->
     <div class="explore-nav">
-      <div class="explore-nav-inner">
-        <button class="explore-back-btn" onclick="showPage('landing')">
-          <img src="logo-iaa.png" alt="IAA" style="height:28px;width:auto;vertical-align:middle"> IAA
+      <div class="explore-nav-inner" style="display:flex;align-items:center;gap:12px">
+        <button class="explore-back-btn" onclick="goBackToLanding()">
+          <span class="back-arrow">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+          </span>
+          <img src="logo-iaa.png" alt="IAA" style="height:20px;width:auto;vertical-align:middle">
+          Início
         </button>
-        <div class="explore-search-wrap">
+        <div class="explore-search-wrap" style="flex:1">
           <span class="explore-search-icon">🔍</span>
           <input type="text" id="explore-search" class="explore-search-input"
             placeholder="Buscar serviços, empresas, vagas..."
             oninput="filterExplore(this.value)">
         </div>
         <div class="explore-nav-actions">
+          <div class="theme-toggle" onclick="toggleTheme()" role="button" tabindex="0" aria-label="Alternar tema">
+            <div class="theme-toggle-track">
+              <div class="theme-toggle-handle">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="icon-moon"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="icon-sun"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
+              </div>
+              <div class="theme-toggle-bg-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="icon-sun"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="icon-moon"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+              </div>
+            </div>
+          </div>
           <button class="btn btn-ghost btn-sm" id="explore-account-btn" onclick="showPage('login')">Acessar conta</button>
           <button class="btn btn-primary btn-sm" onclick="requireLoginForPublish()">+ Publicar</button>
         </div>
@@ -771,7 +842,29 @@
       <p class="explore-publish-bar-text">Quer aparecer aqui e divulgar para toda a região?</p>
       <button class="btn btn-primary btn-sm" onclick="requireLoginForPublish()">+ Divulgar grátis</button>
     </div>
+
+  </div><!-- /explore -->
+
+  <!-- ============================================
+     ERROR / OFFLINE / 404 PAGE
+     ============================================ -->
+  <div id="error-page" class="page" style="display:none">
+    <section class="error-section">
+      <div class="error-container">
+        <div class="error-illustration-wrap">
+          <div class="error-illustration-gif" aria-hidden="true">
+            <h1 class="error-code-title" id="error-code-title">404</h1>
+          </div>
+        </div>
+        <div class="error-content">
+          <h3 class="error-title" id="error-title">Parece que você está perdido</h3>
+          <p class="error-desc" id="error-desc">A página que você procura não está disponível no momento.</p>
+          <div class="error-actions" id="error-actions"></div>
+        </div>
+      </div>
+    </section>
   </div>
+
 
   <!-- MODALS -->
   <div class="modal-overlay" id="modal-overlay" onclick="closeModal(event)">
@@ -788,10 +881,10 @@
   <!-- Hidden file input for photo upload -->
   <input type="file" id="avatar-input" accept="image/*" style="display:none" onchange="handleAvatarUpload(this)" />
 
-  <script src="app.js?v=10"></script>
-  <script src="css/panels/panel-usuario.js?v=3"></script>
-  <script src="css/panels/panel-prestador.js?v=3"></script>
-  <script src="css/panels/panel-empresa.js?v=3"></script>
+  <script src="css/panels/panel-usuario.js?v=4"></script>
+  <script src="css/panels/panel-prestador.js?v=4"></script>
+  <script src="css/panels/panel-empresa.js?v=4"></script>
+  <script src="app.js?v=21"></script>
 </body>
 
 </html>
